@@ -1,0 +1,23 @@
+o (DrugName, { (GeneName, PhenotypeName) }) -> Recommendation ; what's the limit on set size?
+  - if it varies:
+    - try cubric:
+      - efficient subset join condition?
+  - if it's within a handful:
+    - stick with mysql and create a mapping from gene-names to subsets containing those genes
+      - perform a subset join in-memory
+o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable source of this information?
+
+Questions:
+- Aaron
+  - Is there any consistency in how PharmGKB maps genotypes (in particular a gene name [e.g. CYP2D6] and 2 haplotypes [e.g.  
+    *1/*2] that span that gene) to phenotypes (e.g. Ultrarapid metabolizer). For CYP2D6 
+    (http://www.pharmgkb.org/gene/PA128#tabview=tab0&subtab=31), it looks like they give a table from literature, where they 
+    identify genotypes as english descriptions such as "An individual carrying more than two copies of functional alleles".  
+    I then note from the excel file that you have the haplotypes colour-coded based on whether they're "functioning allele", 
+    "non-functional", or "hyperactive".  
+
+    So, ideally it would be good if I had a dataset that was like:
+    GENE_NAME HAPLOTYPE1 HAPLOTYPE2 PHENOTYPE
+    CYP2D6
+    
+    The problem now is knowing what haplotypes  

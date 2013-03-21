@@ -1,0 +1,50 @@
+CREATE TABLE haplotype (
+    gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
+    haplotype_name varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
+    primary key (gene_name, haplotype_name)
+) ENGINE=InnoDB;
+
+CREATE TABLE haplotype_snps (
+    gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
+    haplotype_name varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
+    snp_id varchar({{SQL_SNP_ID_LENGTH}}),
+    allele varchar({{SQL_ALLELE_LENGTH}}),
+    foreign key (gene_name, haplotype_name) references haplotype (gene_name, haplotype_name),
+    primary key (gene_name, haplotype_name, snp_id),
+    index (snp_id, allele)
+) ENGINE=InnoDB;
+
+CREATE TABLE recommendation (
+    drug_name varchar({{SQL_DRUG_NAME_LENGTH}}),
+    gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
+    phenotype_name varchar({{SQL_PHENOTYPE_NAME_LENGTH}}),
+    implications varchar({{SQL_IMPLICATIONS_LENGTH}}),
+    recommendation varchar({{SQL_RECOMMENDATION_LENGTH}}),
+    classification varchar({{SQL_CLASSIFICATION_LENGTH}}),
+    diplotype_egs varchar({{SQL_DIPLOTYPE_EGS_LENGH}}),
+    primary key (drug_name, gene_name, phenotype_name),
+    foreign key (gene_name, phenotype_name) references phenotype (gene_name, phenotype_name)
+) ENGINE=InnoDB;
+
+-- a mapping from genotypes (defined as 2 haplotypes that span the same genetic region of a gene) to phenotypes.
+-- This mapping is defined externally, since it varies based on a paticular gene.  For example, the CYP2D6 gene 
+-- (http://www.pharmgkb.org/gene/PA128#tabview=tab0&subtab=31) defines a genotype as "An individual carrying more than two 
+-- copies of functional alleles", or with an activity score ">2.0"
+CREATE TABLE genotype_phenotype (
+    gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
+    -- haplotype_name 1 and 2 must be stored in sorted order
+    haplotype_name1 varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
+    haplotype_name2 varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
+    phenotype_name varchar({{SQL_PHENOTYPE_NAME_LENGTH}}),
+    index (gene_name, phenotype_name),
+    primary key (gene_name, haplotype_name1, haplotype_name2),
+    foreign key (haplotype_name1, gene_name) references haplotype (haplotype_name, gene_name),
+    foreign key (haplotype_name2, gene_name) references haplotype (haplotype_name, gene_name),
+    foreign key (gene_name, phenotype_name) references phenotype (gene_name, phenotype_name)
+) ENGINE=InnoDB;
+
+CREATE TABLE phenotype (
+    gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
+    phenotype_name varchar({{SQL_PHENOTYPE_NAME_LENGTH}}),
+    primary key (gene_name, phenotype_name)
+) ENGINE=InnoDB;

@@ -2,6 +2,8 @@ o (DrugName, { (GeneName, PhenotypeName) }) -> Recommendation ; what's the limit
   - if it varies:
     - try cubric:
       - efficient subset join condition?
+        - create 2 simple tables of subsets of number 1...n, and see how fast 
+          it joins
   - if it's within a handful:
     - stick with mysql and create a mapping from gene-names to subsets containing those genes
       - perform a subset join in-memory

@@ -1,12 +1,60 @@
 o (DrugName, { (GeneName, PhenotypeName) }) -> Recommendation ; what's the limit on set size?
   - if it varies:
     - try cubric:
-      - efficient subset join condition?
+      X efficient subset join condition?
+      - efficient where clause with subseteq: table.s subseteq i where input set i is LARGE (genome size large)?
+        - cub_server runs in constant memory for "select count(*)" on table = 22*powerset of {1..20}, i = {1..100000}; 
+          however, query is still slow (246.36s) and doesn't seem to be implementing any smart algorithm
+          q_time             i={1...x} q_time/x  |table|  
+          72.35              10000               23068673  
+          246.36s            100000    405.91    23068673  
+          605.41s            150000    247.76    23068673  
+          1074.37s           200000    186.15    23068673 
+        - can we index a set field? If so, does our query run faster?
+          - NO, we can't index a set field:
+            >> csql> alter table s1 add index s_idx(s);
+               
+               In the command from line 1,
+               
+               ERROR: Cannot define index on domain "set".
+          - can we generate a unique index key (hash value) for our sets that can be used to reduce the number of candidate 
+            sets s such that table.s subseteq i 
+            - sounds similar (in particular "candidates") to subset-similarity join literature; so _probably_no_ (not 
+              without access to database internals)
+        - can we interface cubrid with grails...? If not...maybe django, but probably quit at this point...
+          - troubles encountered when building https://github.com/CUBRID/hibernate-core from source and trying to replace 
+            hibernate dependencies with custom built jars:
+            missing class org.codehaus.groovy.grails.orm.hibernate.support.ClosureEventTriggeringInterceptor
+
+        select count(*) from s1 where s1.s = {1,2,3};
+        before index:
+        rep q_time
+        1   60.00s
+        2   61.00
+        3
+        after index:
+        rep q_time
+        1
+        2
+        3
+
+        'select count(*) from s1 where s1.s subseteq '"`perl -e 'print "{", (join ", ", (1..10000)), "}"'`"';'
+        before index:
+        rep q_time
+        1
+        2
+        3
+        after index:
+        rep q_time
+        1
+        2
+        3
+        
         - create 2 simple tables of subsets of number 1...n, and see how fast 
           it joins
   - if it's within a handful:
     - stick with mysql and create a mapping from gene-names to subsets containing those genes
-      - perform a subset join in-memory
+      - perform a set containment query in memory on candidates
 o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable source of this information?
 
 Questions:

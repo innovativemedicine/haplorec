@@ -1,3 +1,4 @@
+SHELL = /bin/bash
 SRC = src/
 PYTHONSRC = $(SRC)/python
 RENDER = $(PYTHONSRC)/render.py

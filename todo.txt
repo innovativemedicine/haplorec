@@ -57,17 +57,12 @@ o (DrugName, { (GeneName, PhenotypeName) }) -> Recommendation ; what's the limit
       - perform a set containment query in memory on candidates
 o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable source of this information?
 
-Questions:
-- Aaron
-  - Is there any consistency in how PharmGKB maps genotypes (in particular a gene name [e.g. CYP2D6] and 2 haplotypes [e.g.  
-    *1/*2] that span that gene) to phenotypes (e.g. Ultrarapid metabolizer). For CYP2D6 
-    (http://www.pharmgkb.org/gene/PA128#tabview=tab0&subtab=31), it looks like they give a table from literature, where they 
-    identify genotypes as english descriptions such as "An individual carrying more than two copies of functional alleles".  
-    I then note from the excel file that you have the haplotypes colour-coded based on whether they're "functioning allele", 
-    "non-functional", or "hyperactive".  
+- figure out how to obtain (GeneName, HaplotypeName, HaplotypeName) -> (GeneName, PhenotypeName) datasets from results 
+  published in CPIC
+  - how many haplotypes H are their typically for a given gene (since we need to store |H|^2 rows for a 
+    given mapping)?
+    - not too many
+    - too many; figure out a new mapping ... -> (GeneName, PhenotypeName) that isn't so 
+      space/time/management costly, but can still be used to query an input set (GeneName, HaplotypeName, HaplotypeName)
 
-    So, ideally it would be good if I had a dataset that was like:
-    GENE_NAME HAPLOTYPE1 HAPLOTYPE2 PHENOTYPE
-    CYP2D6
-    
-    The problem now is knowing what haplotypes  
+Questions:

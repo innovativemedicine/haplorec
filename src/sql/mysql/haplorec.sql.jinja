@@ -19,38 +19,49 @@ CREATE TABLE phenotype (
     primary key (gene_name, phenotype_name)
 ) {{SQL_ENGINE}};
 
-CREATE TABLE recommendation (
+CREATE TABLE drug_recommendation (
+    -- The true primary key for a therapeutic drug_recommendation is a drug, and a set of genes and 
+    -- phenotypes; that is:
+    -- (DrugName, { (GeneName, PhenotypeName) })
+    -- sadly we can't use such a key (767 and 1000 byte limits on varchar keys for InnoDB and MyISAM 
+    -- respectively) so this will just have to be enforced by whoever is inserting data.
+    id bigint not null auto_increment,
     drug_name varchar({{SQL_DRUG_NAME_LENGTH}}),
-    -- a set of tuples of (gene_name, phenotype_name), represented as a string with a tuple 
-    -- delimiter and set element delimiter
-    gene_phen_set varchar({{SQL_MYSQL_GENE_PHEN_SET_LENGTH}}),
     implications varchar({{SQL_IMPLICATIONS_LENGTH}}),
     recommendation varchar({{SQL_RECOMMENDATION_LENGTH}}),
     classification varchar({{SQL_CLASSIFICATION_LENGTH}}),
     diplotype_egs varchar({{SQL_DIPLOTYPE_EGS_LENGH}}),
-    primary key (drug_name, gene_phen_set)
+    primary key (id)
 ) {{SQL_ENGINE}};
 
--- a mapping from (gene_name, phenotype_name) to the gene_phen_set's that contain them (this is a 
--- kludge to workaround the fact that we don't have a proper set datatype in MySQL).
+-- Defines the mapping { (GeneName, PhenotypeName) } -> DrugRecommendation.
+-- That is, the set of gene phenotypes that map to particular drug recommendations.
 --
--- Usage: 
--- def gene_phenotype->recommendation(input_gene_phenotype = create table(gene_name, phenotype_name), engine = (MEMORY|MyISAM)):
---     create temporary table input_gene_phen_set (gene_phen_set, index(gene_phen_set)) ENGINE = $engine;
---     for s in cursor: select candidate.gene_phen_set from candidate join input_gene_phenotype using (gene_name):
---         if either of the sets (input table) or s contain eachother:
---             prepared stmt: insert into input_gene_phen_set values s
---     return cursor: select recommendation.* from recommendation join input_gene_phen_set using (gene_phen_set)
-CREATE TABLE candidate (
+-- Usage:
+-- def gene_phenotype->drug_recommendation(
+--     input_gene_phenotype = create table(gene_name, phenotype_name, index(gene_name, phenotype_name)), 
+--     engine = (MEMORY|MyISAM)):
+--     return cursor:
+--         select * from drug_recommendation rec
+--             # refer to src/sql/mysql/subset_query.sql 
+--             where $either_set_contains(
+--                     select * from input_gene_phenotype, 
+--                     select gene_name, phenotype_name from gene_phenotype_drug_recommendation ghr 
+--                         where drug_recommendation_id = ghr.drug_recommendation_id,
+--                     columns=[gene_name, phenotype_name]
+--                   )
+CREATE TABLE gene_phenotype_drug_recommendation (
     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
-    -- TODO: InnoDB has a limit of 767 bytes and MyISAM has a limit of 1000 bytes on key length; now 
-    -- that we know how to do set-containment queries on 2 relations, rework schema to not use a 
-    -- delimited string kludge
-    gene_phen_set varchar({{SQL_MYSQL_GENE_PHEN_SET_LENGTH}}),
-    index gene_name_idx (gene_name),
-    primary key (gene_name, gene_phen_set)
+    phenotype_name varchar({{SQL_PHENOTYPE_NAME_LENGTH}}),
+    drug_recommendation_id bigint,
+    index gene_name_phenotype_name_idx (gene_name, phenotype_name),
+    primary key (gene_name, phenotype_name, drug_recommendation_id),
+    foreign key (drug_recommendation_id) references drug_recommendation(id)
 ) {{SQL_ENGINE}};
 
+-- Defines the mapping (GeneName, HaplotypeName) -> { (SnpSite, Allele) }.
+-- That is, the snps belonging to a particular gene's haplotype.
+--
 -- Usage:
 -- def snp->gene_haplotype(input_variants, engine = (MEMORY|MyISAM)):
 --     create temporary table input_gene_haplotype (gene_name, haplotype_name) ENGINE = $engine
@@ -74,11 +85,19 @@ CREATE TABLE gene_haplotype_variant (
     primary key (gene_name, haplotype_name, snp_id, allele)
 ) {{SQL_ENGINE}};
 
--- a mapping from genotypes (defined as 2 haplotypes that span the same genetic region of a gene) to 
--- phenotypes. This mapping is defined externally, since it varies based on a paticular gene.  For 
--- example, the CYP2D6 gene (http://www.pharmgkb.org/gene/PA128#tabview=tab0&subtab=31) defines a 
--- genotype as "An individual carrying more than two copies of functional alleles", or with an 
--- activity score ">2.0"
+-- Defines the mapping (GeneName, HaplotypeName, HaplotypeName) -> (GeneName, PhenotypeName).
+-- That is, a mapping from genotypes (defined as 2 haplotypes that span the same genetic region of a 
+-- gene) to phenotypes. 
+
+-- This mapping is defined externally, but will typically be obtained by results published by the 
+-- Clinical Pharmacogenetics Implementation Consortium (CPIC), which are published in an english 
+-- prose (i.e. they need to be converted into actual genotypes) by mapping genotypes to phenotype 
+-- descriptions. 
+--
+-- e.g. 
+-- - CYP2D6 gene: http://www.pharmgkb.org/gene/PA128#tabview=tab0&subtab=31
+-- - genotype: "An individual carrying more than two copies of functional alleles"
+-- - phenotype: "Ultrarapid metabolizer") since it varies based on a paticular 
 CREATE TABLE genotype_phenotype (
     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
     -- haplotype_name 1 and 2 must be stored in sorted order

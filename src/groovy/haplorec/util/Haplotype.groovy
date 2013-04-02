@@ -5,9 +5,9 @@ import groovy.sql.Sql
 public class Haplotype {
     private static def DEFAULT_SAVE_AS = 'query'
 
-	static def snpsToHaplotypes(String url, String username, String password, String driver = "com.mysql.jdbc.Driver") {
-		return snpsToHaplotypes(Sql.newInstance(url, username, password, driver))
-	}
+	// static def snpsToHaplotypes(String url, String username, String password, String driver = "com.mysql.jdbc.Driver") {
+	// 	return snpsToHaplotypes(Sql.newInstance(url, username, password, driver))
+	// }
 
 	static def snpsToHaplotypes(Sql sql, saveAs = DEFAULT_SAVE_AS, inputSnps = 'input_snps', intoTable = 'input_gene_haplotype') {
         return selectWhereSetContains(

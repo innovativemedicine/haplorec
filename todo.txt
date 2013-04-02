@@ -64,5 +64,10 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
     - not too many
     - too many; figure out a new mapping ... -> (GeneName, PhenotypeName) that isn't so 
       space/time/management costly, but can still be used to query an input set (GeneName, HaplotypeName, HaplotypeName)
+- test current code
+  - get some test data
+  - use groovy unit test to setup the DB and run the different stages
+    - test using different return types:
+      - query/existing/engine
 
 Questions:

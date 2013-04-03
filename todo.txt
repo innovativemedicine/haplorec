@@ -66,6 +66,29 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
       space/time/management costly, but can still be used to query an input set (GeneName, HaplotypeName, HaplotypeName)
 - test current code
   - get some test data
+    - andrea's excel file
+      - not very consistent in syntax (requires some tinkering to parse everything sanely), but somewhat consistent in data structure
+      - cross references things on a by-drug basis
+      - data present:
+        drug_recommendation (only recommendation)
+        gene_phenotype_drug_recommendation
+        genotype_phenotype (for 1, pretty inconsistent formatting)
+        genotype_drug_recommendation
+      - data missing:
+        haplotype_snps
+        gene_haplotype_variant
+
+    - PharmGKB
+      - variation in syntax, but there is an underlying data structure; probably need to write slight variations on parsers for each drug page
+      - cross references things on a by-drug basis
+      - data present:
+        drug_recommendation (only recommendation for some)
+        gene_phenotype_drug_recommendation (for some)
+        genotype_phenotype (for some; for single gene-drug pairs it's easy to extract [use ajax form on drug page], varies for multi-gene-drug pairs)
+        genotype_drug_recommendation (for some)
+        haplotype_snps (easy and consistent)
+        gene_haplotype_variant (easy and consistent)
+      - data missing:
   - use groovy unit test to setup the DB and run the different stages
     - test using different return types:
       - query/existing/engine

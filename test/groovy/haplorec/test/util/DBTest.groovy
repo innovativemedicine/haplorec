@@ -40,4 +40,21 @@ public class DBTest extends GroovyTestCase {
         return sql
     }
 
+    def insertSql(sql, table, columns, rows) {
+        if (rows.size() > 0) {
+            sql.withBatch("insert into ${table}(${columns.join(', ')}) values (${(['?'] * columns.size()).join(', ')})".toString()) { ps ->
+                rows.each { r -> ps.addBatch(r) }
+            }
+        }
+    }
+
+    def selectSql(sql, table, columns) {
+        def hashRowsToListRows = { rows, cols -> 
+            rows.collect { r -> 
+                cols.collect { r[it] } 
+            } 
+        }
+        return hashRowsToListRows(sql.rows("select ${columns.join(', ')} from $table".toString()), columns)
+    }
+
 }

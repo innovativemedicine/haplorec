@@ -1,6 +1,7 @@
 package haplorec.util
 
 class Sql {
+	private static def DEFAULT_ENGINE_SAVE_AS = 'MyISAM'
     
 	/*
 	 * Keyword Arguments:
@@ -31,11 +32,11 @@ class Sql {
 			kwargs.query :
 			"select ${kwargs.columns.join(', ')} from ${kwargs.existingTable}".toString()
 		// create the temporary table using the right datatypes
-		sql.executeUpdate "create temporary table $newTable as ($q) ${(kwargs.dontRunQuery) ? 'limit 0' : ''}"
+		sql.executeUpdate "create temporary table $newTable as ($q) ${(kwargs.dontRunQuery) ? 'limit 0' : ''}".toString()
 		// create the temporary table using the right datatypes
-		sql.executeUpdate "alter table $newTable engine = $saveAs"
+		sql.executeUpdate "alter table $newTable engine = $saveAs".toString()
 		if (kwargs.indexColumns != null) {
-			def createIndex = { cols -> sql.executeUpdate "alter table $newTable add index (${cols.join(', ')})" }
+			def createIndex = { cols -> sql.executeUpdate "alter table $newTable add index (${cols.join(', ')})".toString() }
 			if (kwargs.indexColumns[0] instanceof java.util.List) {
 				kwargs.indexColumns.each { cols -> createIndex(cols) }
 			} else {
@@ -67,12 +68,6 @@ class Sql {
         return selectAs(sql, query, multisetGroupColumns, saveAs, intoTable, indexColumns:kwargs.indexColumns)
     }
 
-	static def f(Map kwargs = [:], groovy.sql.Sql i) {
-		println "kwargs == ${kwargs}"
-		println "i == ${i}"
-		return i
-	}
-	
 	// columnMap = ['x':'x', 'y':['y1', 'y2']]
 	// A(x, y) B(x, y1, y2)
 	//   1  2    1  2   3

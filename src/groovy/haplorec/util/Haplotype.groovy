@@ -5,7 +5,6 @@ import haplorec.util.Sql as SqlUtil
 
 public class Haplotype {
     private static def DEFAULT_SAVE_AS = 'MyISAM'
-	private static def DEFAULT_ENGINE_SAVE_AS = 'MyISAM'
 
     // static def snpsToHaplotypes(String url, String username, String password, String driver = "com.mysql.jdbc.Driver") {
     //     return snpsToHaplotypes(Sql.newInstance(url, username, password, driver))

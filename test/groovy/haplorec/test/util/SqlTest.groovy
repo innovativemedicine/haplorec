@@ -1,5 +1,7 @@
 package haplorec.test.util
 
+import haplorec.util.Sql
+
 import groovy.util.GroovyTestCase
 
 public class SqlTest extends DBTest {
@@ -30,24 +32,17 @@ public class SqlTest extends DBTest {
 			def createTable = { table, cols -> sql.execute "create table ${table}(${cols.collect { c -> c + ' integer'}.join(', ')})".toString() }
 			createTable('A', ACols)
 			createTable('B', BCols)
-            def insertSql = { table, columns, rows ->
-				if (rows.size() > 0) {
-	                sql.execute """
-	                insert into ${table}(${columns.join(', ')}) values
-	                ${rows.collect { '(' + it.join(', ') + ')' }.join(', ')}
-	                """.toString()
-				}
-            }
-            insertSql('A', ACols, ARows)
+            insertSql(sql, 'A', ACols, ARows)
             // test
 			List badGroups = []
-            haplorec.util.Sql.groupedRowsToColumns(sql, 'A', 'B', groupBy, columnMap, orderRowsBy: kwargs.orderRowsBy, badGroup: { g -> badGroups.add(g) })
+            Sql.groupedRowsToColumns(sql, 'A', 'B', groupBy, columnMap, orderRowsBy: kwargs.orderRowsBy, badGroup: { g -> badGroups.add(g) })
+
 			def hashRowsToListRows = { rows, cols -> 
 				rows.collect { r -> 
 					cols.collect { r[it] } 
 				} 
 			}
-            assertEquals(BRows, hashRowsToListRows(sql.rows('select * from B'), BCols))
+            assertEquals(BRows, selectSql(sql, 'B', BCols))
 			if (kwargs.badGroups != null) {
 				def expect = kwargs.badGroups
 				def got = badGroups.collect { g -> hashRowsToListRows(g, ACols) }
@@ -148,5 +143,33 @@ public class SqlTest extends DBTest {
 			],
 			groupBy, columnMap)
 	}
+
+    def createTableFromExistingTest(Map kwargs = [:], existingRows, columns = null) {
+        if (kwargs.saveAs == null) { kwargs.saveAs = 'MyISAM' }
+		kwargs.existingTable = 'existing_table'
+		if (columns == null) { columns = kwargs.columns }
+        try {
+            sql.execute "create table existing_table(x integer, y varchar(20), z double)"
+            insertSql(sql, 'existing_table', ['x', 'y', 'z'], existingRows)
+            Sql.createTableFromExisting(kwargs, sql, 'new_table', kwargs.saveAs)
+			log.info("new_table: ${sql.rows("show create table new_table")}")
+			assertEquals(selectSql(sql, 'existing_table', columns), selectSql(sql, 'new_table', columns))
+        } finally {
+            sql.execute "drop table if exists existing_table"
+			sql.execute "drop table if exists new_table"
+        }
+    }
+
+    void testCreateTableFromExisting() {
+		def existingRows = [
+            [1, 'hello', 1.0],
+            [2, 'there', 2.0],
+            [3, 'world', 3.0],
+        ]
+        createTableFromExistingTest(columns:['x'], indexColumns:['x'], existingRows)
+		createTableFromExistingTest(columns:['x', 'y'], indexColumns:[['x'], ['x', 'y']], existingRows)
+    }
+	
+	// TODO: test selectWhereSetContains
 
 }

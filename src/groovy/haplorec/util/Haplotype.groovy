@@ -34,9 +34,9 @@ public class Haplotype {
     //   1  2    1  2   3
     //   1  3
 	//http://stackoverflow.com/questions/13708718/groovy-binding-of-keyword-argument
-    private static def groupedRowsToColumns(Map kwargs, Sql sql, rowTable, columnTable, groupBy, columnMap) {
+    private static def groupedRowsToColumns(Map kwargs = [:], Sql sql, rowTable, columnTable, groupBy, columnMap) {
 		//defaults
-		if (kwargs.badGroup == null) { kwargs.badGroup = { r -> } }
+		def badGroup = (kwargs.badGroup == null) ? { r -> } : kwargs.badGroup
 		// sqlInsert == null
 		// orderRowsBy == null
         if (groupBy instanceof java.lang.CharSequence) {

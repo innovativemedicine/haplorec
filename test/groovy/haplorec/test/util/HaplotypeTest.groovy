@@ -43,7 +43,7 @@ public class HaplotypeTest extends GroovyTestCase {
     void testGenotypeToDrugRecommendation() {
     }
 
-    def groupedRowsToColumnsTest(Map kwargs, ACols, ARows, BCols, BRows, groupBy, columnMap) {
+    def groupedRowsToColumnsTest(Map kwargs = [:], ACols, ARows, BCols, BRows, groupBy, columnMap) {
         try {
 
             // setup
@@ -51,15 +51,28 @@ public class HaplotypeTest extends GroovyTestCase {
 			createTable('A', ACols)
 			createTable('B', BCols)
             def insertSql = { table, columns, rows ->
-                sql.execute """
-                insert into ${table}(${columns.join(', ')}) values
-                ${rows.collect { '(' + it.join(', ') + ')' }.join(', ')}
-                """.toString()
+				if (rows.size() > 0) {
+	                sql.execute """
+	                insert into ${table}(${columns.join(', ')}) values
+	                ${rows.collect { '(' + it.join(', ') + ')' }.join(', ')}
+	                """.toString()
+				}
             }
             insertSql('A', ACols, ARows)
             // test
-            Haplotype.groupedRowsToColumns(sql, 'A', 'B', groupBy, columnMap, orderRowsBy: kwargs.orderRowsBy)
-            assertEquals(BRows, sql.rows('select * from B').collect { r -> BCols.collect { r[it] } })
+			List badGroups = []
+            Haplotype.groupedRowsToColumns(sql, 'A', 'B', groupBy, columnMap, orderRowsBy: kwargs.orderRowsBy, badGroup: { g -> badGroups.add(g) })
+			def hashRowsToListRows = { rows, cols -> 
+				rows.collect { r -> 
+					cols.collect { r[it] } 
+				} 
+			}
+            assertEquals(BRows, hashRowsToListRows(sql.rows('select * from B'), BCols))
+			if (kwargs.badGroups != null) {
+				def expect = kwargs.badGroups
+				def got = badGroups.collect { g -> hashRowsToListRows(g, ACols) }
+				assertEquals(expect, got)
+			}
         } finally {
             // teardown
             sql.execute "drop table A".toString()
@@ -94,6 +107,17 @@ public class HaplotypeTest extends GroovyTestCase {
 		groupedRowsToColumnsTest(
 			ACols,
 			[
+				[1, 2],
+			],
+			BCols,
+			[
+				[1, null, 2],
+			], groupBy,
+			// fill 'y2' before filling 'y1', so that a group in A less than size two (that is, size 1) will make 'y1' null over 'y2' 
+			['x':'x', 'y':['y2', 'y1']])
+		groupedRowsToColumnsTest(
+			ACols,
+			[
 				// without orderRowsBy: ['y'], we get [1, 3, 2] for the B row
 				[1, 3],
 				[1, 2],
@@ -113,6 +137,36 @@ public class HaplotypeTest extends GroovyTestCase {
 			[
 				[1, 2, 3],
 			], groupBy, columnMap, orderRowsBy:['y'])
+		// error cases
+		groupedRowsToColumnsTest(
+			ACols,
+			[
+				[1, 1],
+				[1, 2],
+				[1, 3],
+			],
+			BCols,
+			[
+			],
+			badGroups:[
+				[
+					[1, 1],
+					[1, 2],
+					[1, 3],
+				],
+			],
+		 	groupBy, columnMap)
+		// empty input table
+		groupedRowsToColumnsTest(
+			ACols,
+			[
+			],
+			BCols,
+			[
+			],
+			badGroups:[
+			],
+			groupBy, columnMap)
 	}
 
 }

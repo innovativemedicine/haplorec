@@ -92,5 +92,6 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
   - use groovy unit test to setup the DB and run the different stages
     - test using different return types:
       - query/existing/engine
+- TODO: make sure tables (intermediate result and schema tables) have indexes on "set columns", since joins will be happening on these columns
 
 Questions:

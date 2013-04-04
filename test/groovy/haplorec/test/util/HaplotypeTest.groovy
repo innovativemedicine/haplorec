@@ -80,7 +80,7 @@ public class HaplotypeTest extends GroovyTestCase {
         }
     }
 	
-	def testGroupedRowsToColumns() {
+	void testGroupedRowsToColumns() {
 		def ACols = ['x', 'y']
 		def BCols = ['x', 'y1', 'y2']
 		def groupBy = 'x'

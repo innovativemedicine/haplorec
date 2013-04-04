@@ -153,6 +153,7 @@ CREATE TABLE genotype_drug_recommendation (
     haplotype_name1 varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
     haplotype_name2 varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
     drug_recommendation_id bigint,
+    index (gene_name, haplotype_name1, haplotype_name2),
     primary key (gene_name, haplotype_name1, haplotype_name2, drug_recommendation_id),
     foreign key (drug_recommendation_id) references drug_recommendation(id)
 ) {{SQL_ENGINE}};

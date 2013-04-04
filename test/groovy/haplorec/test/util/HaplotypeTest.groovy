@@ -24,7 +24,7 @@ public class HaplotypeTest extends DBTest {
     }
 
     void tearDown() {
-        tearDownDB(TEST_DB)
+        tearDownDB(TEST_DB, sql)
     }
 
     void testGenePhenotypeToDrugRecommendation() {

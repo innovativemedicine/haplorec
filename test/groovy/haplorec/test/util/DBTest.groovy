@@ -27,7 +27,7 @@ public class DBTest extends GroovyTestCase {
         return sqlInstance(kwargs, db) 
     }
 
-    def tearDownDB(db) {
+    def tearDownDB(db, Sql sql) {
         sql.execute "drop database ${db}".toString()
         sql.close()
     }

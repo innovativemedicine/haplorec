@@ -31,7 +31,7 @@ public class Haplotype {
 			dontRunQuery:true,
 			indexColumns:['gene_name', 'haplotype_name1', 'haplotype_name2'])
 		// fill input_genotype using input_gene_haplotype, by mapping groups of 2 haplotypes (i.e. biallelic genes) to single input_genotype rows
-		groupedRowsToColumns(sql, inputGeneHaplotype, intoTable,
+		SqlUtil.groupedRowsToColumns(sql, inputGeneHaplotype, intoTable,
 			'gene_name', 
 			['gene_name':'gene_name', 'haplotype_name':['haplotype_name1', 'haplotype_name2']],
 			orderRowsBy: ['haplotype_name'],
@@ -91,72 +91,4 @@ public class Haplotype {
 			indexColumns:['gene_name', 'phenotype_name'])
 	}
 	
-	// columnMap = ['x':'x', 'y':['y1', 'y2']]
-	// A(x, y) B(x, y1, y2)
-	//   1  2    1  2   3
-	//   1  3
-	private static def groupedRowsToColumns(Map kwargs = [:], Sql sql, rowTable, columnTable, groupBy, columnMap) {
-		//defaults
-		def badGroup = (kwargs.badGroup == null) ? { r -> } : kwargs.badGroup
-		// sqlInsert == null
-		// orderRowsBy == null
-		if (groupBy instanceof java.lang.CharSequence) {
-			groupBy = [groupBy]
-		}
-		def orderBy = (kwargs.orderRowsBy != null) ? groupBy + kwargs.orderRowsBy : groupBy
-		def maxGroupSize = columnMap.values().grep { it instanceof java.util.List }.collect { it.size() }.max()
-		if (maxGroupSize == null)  {
-			maxGroupSize = 1
-		}
-		def columnTableColumns = columnMap.values().flatten()
-		def columnTableColumnStr = columnTableColumns.join(', ')
-		def insertGroup = { sqlI, g ->
-			sqlI.withBatch("insert into ${columnTable}(${columnTableColumnStr}) values (${(['?'] * columnTableColumns.size()).join(', ')})".toString()) { ps ->
-				if (g.size() > maxGroupSize) {
-					badGroup(g)
-				} else {
-					def i = 0
-					def values = columnTableColumns.inject([:]) { m, k -> m[k] = null; m }
-					g.each { row ->
-						row.keySet().each { k ->
-							if (columnMap[k] instanceof java.util.List && i < columnMap[k].size()) {
-								values[columnMap[k][i]] = row[k]
-							} else if (i == 0 && !(columnMap[k] instanceof java.util.List)) {
-								values[columnMap[k]] = row[k]
-							}
-						}
-						i += 1
-					}
-					ps.addBatch(columnTableColumns.collect { values[it] })
-				}
-			}
-		}
-		def lastRowGroup = null
-		List groups = []
-		List group = []
-		def rowCols = columnMap.keySet()
-		sql.eachRow("select * from ${rowTable} order by ${orderBy.join(', ')}".toString()) { row ->
-			def nextRowGroup = groupBy.collect { row[it] }
-			if (lastRowGroup == null) {
-				lastRowGroup = nextRowGroup
-				group.add(rowCols.inject([:]) { m, c -> m[c] = row[c]; m })
-			} else if (lastRowGroup == nextRowGroup) {
-				group.add(rowCols.inject([:]) { m, c -> m[c] = row[c]; m })
-			} else {
-				// process a group
-				if (sqlInsert == null) {
-					groups.add(group)
-				} else {
-					insertGroup(sqlInsert, group)
-					group = []
-				}
-			}
-		}
-		if (group.size() != 0) {
-			groups.add(group)
-		}
-		groups.each { g ->
-			insertGroup(sql, g)
-		}
-	}
 }

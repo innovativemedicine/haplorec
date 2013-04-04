@@ -1,8 +1,5 @@
 package haplorec.test.util
 
-import haplorec.util.Haplotype
-
-import groovy.sql.Sql;
 import groovy.util.GroovyTestCase
 
 public class SqlTest extends DBTest {
@@ -24,12 +21,11 @@ public class SqlTest extends DBTest {
     }
 
     void tearDown() {
-        tearDownDB(TEST_DB)
+        tearDownDB(TEST_DB, sql)
     }
 
     def groupedRowsToColumnsTest(Map kwargs = [:], ACols, ARows, BCols, BRows, groupBy, columnMap) {
         try {
-
             // setup
 			def createTable = { table, cols -> sql.execute "create table ${table}(${cols.collect { c -> c + ' integer'}.join(', ')})".toString() }
 			createTable('A', ACols)
@@ -45,7 +41,7 @@ public class SqlTest extends DBTest {
             insertSql('A', ACols, ARows)
             // test
 			List badGroups = []
-            Haplotype.groupedRowsToColumns(sql, 'A', 'B', groupBy, columnMap, orderRowsBy: kwargs.orderRowsBy, badGroup: { g -> badGroups.add(g) })
+            haplorec.util.Sql.groupedRowsToColumns(sql, 'A', 'B', groupBy, columnMap, orderRowsBy: kwargs.orderRowsBy, badGroup: { g -> badGroups.add(g) })
 			def hashRowsToListRows = { rows, cols -> 
 				rows.collect { r -> 
 					cols.collect { r[it] } 

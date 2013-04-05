@@ -46,23 +46,24 @@ class Sql {
 	}
 	
     // saveAs = (MEMORY|MyISAM|query|existing)
-    static def selectWhereSetContains(Map kwargs = [:], groovy.sql.Sql sql, singlesetTable, multisetTable, setColumns, multisetGroupColumns, saveAs, intoTable) {
+    static def selectWhereSetContains(Map kwargs = [:], groovy.sql.Sql sql, singlesetTable, multisetTable, setColumns, multisetGroupColumns, intoTable, saveAs = DEFAULT_ENGINE_SAVE_AS) {
         def setColumnsStr = setColumns.join(', ')
         def multisetGroupColumnsStr = multisetGroupColumns.join(', ')
         def query = { into = '' ->
-            // alias for outer multisetTable of query
-            def outer = "outer"
-            def whereEitherSetContainsStr = whereEitherSetContains(
-                "select $setColumnsStr from $singlesetTable", 
-                "select $setColumnsStr from $multisetTable where " +
-					// TODO: it may be useful to have an index on (multisetGroupColumns)
-                    multisetGroupColumns.collect { "$it = $outer.$it" }.join('and '),
-                setColumns
-            )
             return """\
-            select distinct $multisetGroupColumnsStr from $multisetTable $outer
-                $into
-                where $whereEitherSetContainsStr 
+			select distinct ${multisetGroupColumns.collect { "counts_table.$it" }.join(', ')} from ${multisetTable} outer_table
+			$into
+			join (
+			    select ${multisetGroupColumnsStr}, count(*) as group_count
+			    from ${multisetTable} join ${singlesetTable} using (${setColumnsStr})
+			    group by ${multisetGroupColumnsStr} 
+			) counts_table
+			where 
+				${multisetGroupColumns.collect { "counts_table.$it = outer_table.$it" }.join(' and ')} 
+				and counts_table.group_count = least(
+				    (select count(*) from ${singlesetTable}), 
+				    (select count(*) from ${multisetTable} inner_table where ${multisetGroupColumns.collect { "inner_table.$it = outer_table.$it" }.join(' and ')})
+				)
             """
         }
         return selectAs(sql, query, multisetGroupColumns, saveAs, intoTable, indexColumns:kwargs.indexColumns)
@@ -137,25 +138,13 @@ class Sql {
 		}
 	}
 	
-    private static def whereEitherSetContains(queryA, queryB, setColumns) {
-        // refer to src/sql/mysql/subset_query.sql 
-        def setColumnsStr = setColumns.join(', ')
-        return """\
-        ( 
-            select count(*) from (
-                select * from ($queryA) A join ($queryB) B using ($setColumnsStr)
-            ) tmp ) = least(($queryA), ($queryB))
-        )
-        """
-    }
-
 	// TODO: add parameter for adding indexColumns instead of just depending on indexing columns all the time
     private static def engines = ['MEMORY', 'MyISAM']
     private static def validSaveAs = engines + ['query', 'existing']
     private static def selectAs(Map kwargs = [:], groovy.sql.Sql sql, Closure query, columns, saveAs = 'query', intoTable = null) {
         if (engines.any { saveAs == it }) {
             def q = query()
-			createTableFromExisting(sql, intoTable, saveAs, query:query, indexColumns:kwargs.indexColumns)
+			createTableFromExisting(sql, intoTable, saveAs, query:q, indexColumns:kwargs.indexColumns)
 			// TODO: figure out why i decided not run the query in the create table prior...
 //            def qInsertInto = query('INTO $intoTable')
 //            sql.executeUpdate qInsertInto

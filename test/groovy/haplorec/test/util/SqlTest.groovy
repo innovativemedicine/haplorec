@@ -169,7 +169,99 @@ public class SqlTest extends DBTest {
         createTableFromExistingTest(columns:['x'], indexColumns:['x'], existingRows)
 		createTableFromExistingTest(columns:['x', 'y'], indexColumns:[['x'], ['x', 'y']], existingRows)
     }
+
+    def selectWhereSetContainsTest(Map kwargs = [:], singlesetTableCreateStmt, singlesetTableRows, multisetTableCreateStmt, multisetTableRows, expectRows) {
+		def (singlesetTable, singlesetColumns) = parseCreateTableStatement(singlesetTableCreateStmt)
+		def (multisetTable, multisetColumns) = parseCreateTableStatement(multisetTableCreateStmt)
+		try {
+	        tableTest(sql, 
+	            [
+	                [singlesetTableCreateStmt, singlesetTableRows], 
+	                [multisetTableCreateStmt, multisetTableRows],
+	            ]
+	        ) {
+				def nonsetColumns = multisetColumns.grep { m -> ! singlesetColumns.any { s -> m == s } }
+	            Sql.selectWhereSetContains(sql, singlesetTable, multisetTable, singlesetColumns, nonsetColumns, 'C')
+	            assertEquals(expectRows, selectSql(sql, 'C', nonsetColumns))
+	        }
+		} finally {
+			sql.execute "drop table if exists C"
+		}
+    }
 	
-	// TODO: test selectWhereSetContains
+	void testSelectWhereSetContains() {
+        selectWhereSetContainsTest(
+			// { (x, y) }
+			"create table A(x integer, y integer)",
+            [
+                [1, 1],
+                [1, 2],
+                [1, 3],
+                [1, 4],
+            ],
+			// z, { (x, y) }
+			"create table B(z integer, x integer, y integer)",
+            [
+                // equal set
+                [10, 1, 1],
+                [10, 1, 2],
+                [10, 1, 3],
+                [10, 1, 4],
+                // subset
+                [20, 1, 1],
+                [20, 1, 2],
+                [20, 1, 3],
+                // superset 
+                [30, 1, 1],
+                [30, 1, 2],
+                [30, 1, 3],
+                [30, 1, 4],
+                [30, 1, 5],
+                // nonzero intersection, but neither subset nor superset 
+                [40, 1, 1],
+                [40, 1, 5],
+            ],
+            [
+                [10],
+                [20],
+                [30],
+            ])
+		selectWhereSetContainsTest(
+			// { (a, b) }
+			"create table A(a varchar(10), b varchar(5))",
+			[
+				['10_chars__', '5ch_1'],
+				['10_chars__', '5ch_2'],
+				['10_chars__', '5ch_3'],
+				['10_chars__', '5ch_4'],
+			],
+			// c, d, { (a, b) }
+			"create table B(c varchar(10), d varchar(5), a varchar(10), b varchar(5))",
+			[
+				// equal set
+				['10', '10_', '10_chars__', '5ch_1'],
+				['10', '10_', '10_chars__', '5ch_2'],
+				['10', '10_', '10_chars__', '5ch_3'],
+				['10', '10_', '10_chars__', '5ch_4'],
+				// subset
+				['20', '20_', '10_chars__', '5ch_1'],
+				['20', '20_', '10_chars__', '5ch_2'],
+				['20', '20_', '10_chars__', '5ch_3'],
+				// superset
+				['30', '30_', '10_chars__', '5ch_1'],
+				['30', '30_', '10_chars__', '5ch_2'],
+				['30', '30_', '10_chars__', '5ch_3'],
+				['30', '30_', '10_chars__', '5ch_4'],
+				['30', '30_', '10_chars__', '5ch_5'],
+				// nonzero intersection, but neither subset nor superset
+				['40', '40_', '10_chars__', '5ch_1'],
+				['40', '40_', '10_chars__', '5ch_5'],
+			],
+			[
+				['10', '10_'],
+				['20', '20_'],
+				['30', '30_'],
+			])
+	    }
 
 }

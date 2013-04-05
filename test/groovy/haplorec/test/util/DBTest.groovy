@@ -57,4 +57,40 @@ public class DBTest extends GroovyTestCase {
         return hashRowsToListRows(sql.rows("select ${columns.join(', ')} from $table".toString()), columns)
     }
 
+    private static def parseCreateTableStatement(createTableStatment) {
+        def m = (createTableStatment =~ /(?i)create\s+table\s+([^(]+)/)
+        def (_, tableName) = m[0]
+        def columns = (createTableStatment.substring(m.end()) =~ /\s*(?:(\w+)\s+\w+(?:\([^)]*\))?\s*,?\s*)/).collect { match -> match[1] }
+        return [tableName, columns]
+    }
+
+    /* [(createTableStatment, [dataRow]) or (createTableStatment)] table
+     */
+    def tableTest(sql, tables, Closure doTest) {
+        def tableNames = []
+        try {
+            // create tables and insert data
+            tables.each { t ->
+                if (t.size() == 2) {
+                    def (createTableStatment, rows) = t
+                    def (tableName, columns) = parseCreateTableStatement(createTableStatment)
+                    sql.execute createTableStatment
+                    tableNames.add(tableName)
+                    insertSql(sql, tableName, columns, rows)
+                } else {
+                    def (createTableStatment) = t
+                    def (tableName, _) = parseCreateTableStatement(createTableStatment)
+                    tableNames.add(tableName)
+                    sql.execute createTableStatment
+                }
+            }
+            // run the test
+            doTest()
+        } finally {
+            tableNames.each { 
+                sql.execute "drop table if exists $it".toString()
+            }
+        }
+    }
+
 }

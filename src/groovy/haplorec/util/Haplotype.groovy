@@ -50,8 +50,8 @@ public class Haplotype {
             'gene_phenotype_drug_recommendation',
             ['gene_name', 'phenotype_name'],
             ['drug_recommendation_id'],
-            saveAs, 
             intoTable,
+            saveAs, 
         )
     }
 
@@ -63,8 +63,8 @@ public class Haplotype {
             ['snp_id', 'allele'],
             ['gene_name', 'haplotype_name'],
 			indexColumns: ['gene_name', 'haplotype_name'],
-            'query', 
             intoTable,
+            'query', 
         )
     }
 
@@ -75,8 +75,8 @@ public class Haplotype {
             'genotype_drug_recommendation',
             ['gene_name', 'haplotype_name1', 'haplotype_name2'],
             ['drug_recommendation_id'],
-            'query', 
             intoTable,
+            'query', 
         )
     }
 	

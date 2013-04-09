@@ -151,7 +151,7 @@ public class SqlTest extends DBTest {
         try {
             sql.execute "create table existing_table(x integer, y varchar(20), z double)"
             insertSql(sql, 'existing_table', ['x', 'y', 'z'], existingRows)
-            Sql.createTableFromExisting(kwargs, sql, 'new_table', kwargs.saveAs)
+            Sql.createTableFromExisting(kwargs, sql, 'new_table')
 			log.info("new_table: ${sql.rows("show create table new_table")}")
 			assertEquals(selectSql(sql, 'existing_table', columns), selectSql(sql, 'new_table', columns))
         } finally {

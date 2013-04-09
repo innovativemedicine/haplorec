@@ -15,14 +15,26 @@ public class DBTest extends GroovyTestCase {
     }
 
     def setUpDB(Map kwargs = [:], db) {
+		// default keyword arguments
         setKwargsDefaults(kwargs)
-        // default keyword arguments 
+		if (kwargs.schemaFile != null) { kwargs.schema = new File(kwargs.schemaFile).text }
         def sql = sqlInstance(kwargs)
         // groovy.sql.Sql is doing some miserably weird garbage behind the scenes when calling 
         // Sql.execute(GString sql); in particular the error message suggests it's replacing 
         // ${SOMEVAR} with 'blah' (single quotes _included_), hence our explicit toString call.
 		sql.execute "drop database if exists ${db}".toString()
 		sql.execute "create database ${db}".toString()
+		if (kwargs.schema != null) {
+			// def sqlDB = sqlInstance(kwargs, db)
+			sql.execute "use ${db}".toString()
+			kwargs.schema.replaceAll(/\s*--.*/, "")
+						 .replaceAll(/\n\s*\n/, "")
+						 .tokenize(';')
+						 .grep { !(it =~ /^\s*$/) }
+						 .each { stmt -> 
+				sql.execute stmt 
+			}
+		}
         sql.close()
         return sqlInstance(kwargs, db) 
     }

@@ -1,5 +1,7 @@
 package haplorec.util
 
+import java.util.Map;
+
 class Sql {
 	private static def DEFAULT_ENGINE_SAVE_AS = 'MyISAM'
     
@@ -18,10 +20,12 @@ class Sql {
 	 *   boolean dontRunQuery: append 'limit 0' to the query (see query keyword argument) so that we don't 
 	 *                         actually run the query; this is useful if we just want the columns and their 
 	 *                         associated data types from a query string for our new table (default: false)
+	 *   boolean temporary: make a temporary table (default: false)
 	 *   
 	 */
-	static def createTableFromExisting(Map kwargs = [:], groovy.sql.Sql sql, newTable, saveAs = DEFAULT_ENGINE_SAVE_AS) {
-		if (!engines.any { saveAs == it }) {
+	static def createTableFromExisting(Map kwargs = [:], groovy.sql.Sql sql, newTable) {
+        setDefaultKwargs(kwargs)
+		if (!engines.any { kwargs.saveAs == it }) {
 			throw new IllegalArgumentException("saveAs must be a valid MySQL engine type")
 		}
 		if (kwargs.dontRunQuery == null) { kwargs.dontRunQuery = false }
@@ -32,9 +36,9 @@ class Sql {
 			kwargs.query :
 			"select ${kwargs.columns.join(', ')} from ${kwargs.existingTable}".toString()
 		// create the temporary table using the right datatypes
-		sql.executeUpdate "create temporary table $newTable as ($q) ${(kwargs.dontRunQuery) ? 'limit 0' : ''}".toString()
+		sql.executeUpdate "create ${(kwargs.temporary) ? 'temporary' : ''} table $newTable as ($q) ${(kwargs.dontRunQuery) ? 'limit 0' : ''}".toString()
 		// create the temporary table using the right datatypes
-		sql.executeUpdate "alter table $newTable engine = $saveAs".toString()
+		sql.executeUpdate "alter table $newTable engine = ${kwargs.saveAs}".toString()
 		if (kwargs.indexColumns != null) {
 			def createIndex = { cols -> sql.executeUpdate "alter table $newTable add index (${cols.join(', ')})".toString() }
 			if (kwargs.indexColumns[0] instanceof java.util.List) {
@@ -46,13 +50,12 @@ class Sql {
 	}
 	
     // saveAs = (MEMORY|MyISAM|query|existing)
-    static def selectWhereSetContains(Map kwargs = [:], groovy.sql.Sql sql, singlesetTable, multisetTable, setColumns, multisetGroupColumns, intoTable, saveAs = DEFAULT_ENGINE_SAVE_AS) {
+    static def selectWhereSetContains(Map kwargs = [:], groovy.sql.Sql sql, singlesetTable, multisetTable, setColumns, multisetGroupColumns, intoTable) {
+        setDefaultKwargs(kwargs)
         def setColumnsStr = setColumns.join(', ')
         def multisetGroupColumnsStr = multisetGroupColumns.join(', ')
-        def query = { into = '' ->
-            return """\
+        def query = """\
 			select distinct ${multisetGroupColumns.collect { "counts_table.$it" }.join(', ')} from ${multisetTable} outer_table
-			$into
 			join (
 			    select ${multisetGroupColumnsStr}, count(*) as group_count
 			    from ${multisetTable} join ${singlesetTable} using (${setColumnsStr})
@@ -64,9 +67,11 @@ class Sql {
 				    (select count(*) from ${singlesetTable}), 
 				    (select count(*) from ${multisetTable} inner_table where ${multisetGroupColumns.collect { "inner_table.$it = outer_table.$it" }.join(' and ')})
 				)
-            """
-        }
-        return selectAs(sql, query, multisetGroupColumns, saveAs, intoTable, indexColumns:kwargs.indexColumns)
+        """
+        return selectAs(sql, query, multisetGroupColumns, 
+			intoTable:intoTable, 
+			indexColumns:kwargs.indexColumns, 
+			saveAs:kwargs.saveAs)
     }
 
 	// columnMap = ['x':'x', 'y':['y1', 'y2']]
@@ -141,21 +146,45 @@ class Sql {
 	// TODO: add parameter for adding indexColumns instead of just depending on indexing columns all the time
     private static def engines = ['MEMORY', 'MyISAM']
     private static def validSaveAs = engines + ['query', 'existing']
-    private static def selectAs(Map kwargs = [:], groovy.sql.Sql sql, Closure query, columns, saveAs = 'query', intoTable = null) {
-        if (engines.any { saveAs == it }) {
-            def q = query()
-			createTableFromExisting(sql, intoTable, saveAs, query:q, indexColumns:kwargs.indexColumns)
+    private static def selectAs(Map kwargs = [:], groovy.sql.Sql sql, query, columns) {
+        setDefaultKwargs(kwargs)
+        if (engines.any { kwargs.saveAs == it }) {
+            def q = query
+			createTableFromExisting(sql, kwargs.intoTable, 
+				saveAs:kwargs.saveAs, 
+				query:q, 
+				indexColumns:kwargs.indexColumns)
 			// TODO: figure out why i decided not run the query in the create table prior...
-//            def qInsertInto = query('INTO $intoTable')
+//            def qInsertInto = query('INTO ${kwargs.intoTable}')
 //            sql.executeUpdate qInsertInto
-        } else if (saveAs == 'query') {
-            return query()
-        } else if (saveAs == 'existing') {
-            def qInsertInto = query('INTO $intoTable')
-            sql.executeUpdate qInsertInto
+        } else if (kwargs.saveAs == 'query') {
+            return query
+        } else if (kwargs.saveAs == 'existing') {
+			def qInsertInto = """\
+				insert into ${kwargs.intoTable} (${columns.join(', ')})
+				$query""".toString()
+//            def qInsertInto = query("INTO ${kwargs.intoTable}").toString()
+            sql.execute qInsertInto
         } else {
-            throw new IllegalArgumentException("Unknown saveAs type for outputting SQL results; saveAs was $saveAs but must be one of " + validSaveAs.join(', '))
+            throw new IllegalArgumentException("Unknown saveAs type for outputting SQL results; saveAs was ${kwargs.saveAs} but must be one of " + validSaveAs.join(', '))
         }
     }
+	
+	static def insert(groovy.sql.Sql sql, table, columns, rows) {
+		if (rows.size() > 0) {
+			sql.withBatch("insert into ${table}(${columns.join(', ')}) values (${(['?'] * columns.size()).join(', ')})".toString()) { ps ->
+				rows.each { r -> ps.addBatch(r) }
+			}
+		}
+	}
+	
+	private static def setDefaultKwargs(Map kwargs) {
+		def setDefault = { property, defaultValue ->
+			if (kwargs[property] == null) {
+				kwargs[property] = defaultValue
+			}
+		}
+		setDefault('saveAs', DEFAULT_ENGINE_SAVE_AS)
+	}
 
 }

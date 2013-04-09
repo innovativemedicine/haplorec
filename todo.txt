@@ -93,5 +93,7 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
     - test using different return types:
       - query/existing/engine
 - TODO: make sure tables (intermediate result and schema tables) have indexes on "set columns", since joins will be happening on these columns
+- start unit testing Haplotype functions
+- make a function for running the whole pipeline from stage 1 (ideally, have some way to hook into the pipeline at various steps, and follow through to a final result)
 
 Questions:

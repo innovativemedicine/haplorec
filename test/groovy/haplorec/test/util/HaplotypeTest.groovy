@@ -1,8 +1,10 @@
 package haplorec.test.util
 
+import java.util.Map;
+
 import haplorec.util.Haplotype
 
-import groovy.sql.Sql;
+import groovy.sql.Sql
 import groovy.util.GroovyTestCase
 
 public class HaplotypeTest extends DBTest {
@@ -12,6 +14,7 @@ public class HaplotypeTest extends DBTest {
 	def TEST_PORT = 3306
 	def TEST_USER = "root"
 	def TEST_PASSWORD = ""
+	def TEST_SCHEMA_FILE = 'src/sql/mysql/haplorec.sql'
 
     def sql
 
@@ -20,7 +23,8 @@ public class HaplotypeTest extends DBTest {
                       host:TEST_HOST,
                       user:TEST_USER,
                       password:TEST_PASSWORD,
-                      port:TEST_PORT)
+                      port:TEST_PORT,
+					  schemaFile:TEST_SCHEMA_FILE)
     }
 
     void tearDown() {
@@ -35,5 +39,26 @@ public class HaplotypeTest extends DBTest {
 
     void testGenotypeToDrugRecommendation() {
     }
+	
+	def drugRecommendationsTest(Map kwargs = [:], expectedDrugRecommendationRows) {
+		haplorec.util.Sql.createTableFromExisting(sql, 'input_variant',
+			existingTable: 'haplotype_snps', 
+			columns: ['snp_id', 'allele'], 
+			indexColumns: ['snp_id', 'allele'])
+		try {
+			Haplotype.drugRecommendations(kwargs, sql)
+			assertEquals(expectedDrugRecommendationRows, selectSql(sql, 'input_drug_recommendation', ['drug_recommendation_id']))
+		} finally {
+			sql.execute "drop table if exists input_variant"
+		}
+	}
+	
+	void testDrugRecommendations() {
+		drugRecommendationsTest(
+			variants: [
+			], 
+			[
+			])
+	}
 
 }

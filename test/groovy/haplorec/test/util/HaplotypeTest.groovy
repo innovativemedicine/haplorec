@@ -47,7 +47,7 @@ public class HaplotypeTest extends DBTest {
 			indexColumns: ['snp_id', 'allele'])
 		try {
 			Haplotype.drugRecommendations(kwargs, sql)
-			assertEquals(expectedDrugRecommendationRows, selectSql(sql, 'input_drug_recommendation', ['drug_recommendation_id']))
+			assertEquals(expectedDrugRecommendationRows, select(sql, 'input_drug_recommendation', ['drug_recommendation_id']))
 		} finally {
 			sql.execute "drop table if exists input_variant"
 		}

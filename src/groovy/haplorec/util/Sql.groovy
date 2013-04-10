@@ -186,5 +186,29 @@ class Sql {
 		}
 		setDefault('saveAs', DEFAULT_ENGINE_SAVE_AS)
 	}
+	
+	/* Execute a block of code using a unique identifier generated from the autoincrement column when inserting an empty row into the provided table Insert an empty row into $table,
+	 * Keyword arguments:
+	 * 
+	 * optional:
+	 * String idColumn: name of the autoincrement column for the provided table
+	 * Map<String, T> values: a map from column names to values (useful if the table your using doesn't specify default values)
+	 */
+	static def withUniqueId(Map kwargs = [:], groovy.sql.Sql sql, table, Closure doWithId) {
+		if (kwargs.idColumn == null) { kwargs.idColumn = 'id' }
+		if (kwargs.values == null) { kwargs.values = [:] }
+		// make sure this works with multiple columns
+		def extraColumns = kwargs.values.keySet()
+		def keys = sql.executeInsert """\
+			insert into $table(${extraColumns.join(', ')}) 
+			values(${(['?']*extraColumns.size()).join(', ')})""".toString(), 
+			extraColumns.collect { c -> kwargs.values[c] } 
+		def id = keys[0][0]
+		try {
+			doWithId(id)
+		} finally {
+			sql.execute "delete from $table where ${kwargs.idColumn} = ?", id
+		}
+	}
 
 }

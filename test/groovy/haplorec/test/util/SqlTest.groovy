@@ -1,7 +1,10 @@
 package haplorec.test.util
 
+import java.util.Map;
+
 import haplorec.util.Sql
 
+import groovy.lang.Closure;
 import groovy.util.GroovyTestCase
 
 public class SqlTest extends DBTest {
@@ -32,7 +35,7 @@ public class SqlTest extends DBTest {
 			def createTable = { table, cols -> sql.execute "create table ${table}(${cols.collect { c -> c + ' integer'}.join(', ')})".toString() }
 			createTable('A', ACols)
 			createTable('B', BCols)
-            insertSql(sql, 'A', ACols, ARows)
+            insert(sql, 'A', ACols, ARows)
             // test
 			List badGroups = []
             Sql.groupedRowsToColumns(sql, 'A', 'B', groupBy, columnMap, orderRowsBy: kwargs.orderRowsBy, badGroup: { g -> badGroups.add(g) })
@@ -42,7 +45,7 @@ public class SqlTest extends DBTest {
 					cols.collect { r[it] } 
 				} 
 			}
-            assertEquals(BRows, selectSql(sql, 'B', BCols))
+            assertEquals(BRows, select(sql, 'B', BCols))
 			if (kwargs.badGroups != null) {
 				def expect = kwargs.badGroups
 				def got = badGroups.collect { g -> hashRowsToListRows(g, ACols) }
@@ -150,10 +153,10 @@ public class SqlTest extends DBTest {
 		if (columns == null) { columns = kwargs.columns }
         try {
             sql.execute "create table existing_table(x integer, y varchar(20), z double)"
-            insertSql(sql, 'existing_table', ['x', 'y', 'z'], existingRows)
+            insert(sql, 'existing_table', ['x', 'y', 'z'], existingRows)
             Sql.createTableFromExisting(kwargs, sql, 'new_table')
 			log.info("new_table: ${sql.rows("show create table new_table")}")
-			assertEquals(selectSql(sql, 'existing_table', columns), selectSql(sql, 'new_table', columns))
+			assertEquals(select(sql, 'existing_table', columns), select(sql, 'new_table', columns))
         } finally {
             sql.execute "drop table if exists existing_table"
 			sql.execute "drop table if exists new_table"
@@ -182,7 +185,7 @@ public class SqlTest extends DBTest {
 	        ) {
 				def nonsetColumns = multisetColumns.grep { m -> ! singlesetColumns.any { s -> m == s } }
 	            Sql.selectWhereSetContains(sql, singlesetTable, multisetTable, singlesetColumns, nonsetColumns, 'C')
-	            assertEquals(expectRows, selectSql(sql, 'C', nonsetColumns))
+	            assertEquals(expectRows, select(sql, 'C', nonsetColumns))
 	        }
 		} finally {
 			sql.execute "drop table if exists C"
@@ -262,6 +265,36 @@ public class SqlTest extends DBTest {
 				['20', '20_'],
 				['30', '30_'],
 			])
-	    }
+    }
+	
+	def withUniqueIdTest(Map kwargs = [:], tableCreateStmt) {
+		def (table, _) = parseCreateTableStatement(tableCreateStmt)
+		tableTest(sql, [
+			[tableCreateStmt],
+		]) {
+			/* expected behaviour of Sql.withUniqueId:
+			 * - a new row exists in $table with a unique id during the execution of doWithId
+			 * - after withUniqueId (and doWithId) executes, that same row has been removed
+			 */
+			def id
+			assert 0 == selectCount(sql, table)
+			Sql.withUniqueId(kwargs, sql, table) { _id ->
+				id = _id
+				assert 1 == selectCount(sql, table) : "a new row exists in $table with a unique id during the execution of doWithId"
+			}
+			assert 0 == selectCount(sql, table) : "after withUniqueId (and doWithId) executes, that same row has been removed"
+		}
+	}
+	
+	void testWithUniqueId() {
+		withUniqueIdTest("create table id_generator(id bigint not null auto_increment, primary key (id))")
+		withUniqueIdTest("""\
+            create table id_generator(
+                id bigint not null auto_increment, 
+			    somestring varchar(50) not null, 
+			    primary key (id))
+			""",
+			values: ['somestring':'somevalue'])
+	}
 
 }

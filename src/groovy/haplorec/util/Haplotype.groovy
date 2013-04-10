@@ -118,64 +118,106 @@ public class Haplotype {
 			saveAs:kwargs.saveAs)
 	}
 	
+	static def createVariant(Map kwargs = [:], groovy.sql.Sql sql, table, rows) {
+		setDefaultKwargs(kwargs)
+		def columns = ['snp_id', 'allele']
+		Sql.createTableFromExisting(sql, table,
+			columns: columns,
+			existingTable: 'gene_haplotype_variant',
+			indexColumns: columns)
+		Sql.insert(sql, table, columns, rows)
+	}
+	
 	/*
 	 * TODO: make it so we can provide an iterable set of rows to use for an input_* table (thereby skipping the building of that table)
 	 */
 	static def drugRecommendations(Map kwargs = [:], groovy.sql.Sql sql) {
+		if (kwargs.pipelineJobTable == null) { kwargs.pipelineJobTable = 'pipeline_job' }
+		if (kwargs.newPipelineJob == null) { kwargs.newPipelineJob = true }
 		if (kwargs.inputTables == null) {
 			kwargs.inputTables = [:]
 		}
-		def defaultInputTable = { table -> 
-			if (!kwargs.inputTables.containsKey(table)) {
-				def camelcase = table.replaceFirst(/^input_/,  "")
-									 .replaceAll(/_(\w)/, { it[0][1].toUpperCase() })
-				kwargs.inputTables[camelcase] = table
-			}
+		def tableKey = { defaultTable ->
+			defaultTable.replaceFirst(/^input_/,  "")
+						.replaceAll(/_(\w)/, { it[0][1].toUpperCase() })
 		}
-		[
+		def defaultTableMap = [
 			'input_drug_recommendation',
 			'input_gene_haplotype',
 			'input_gene_phenotype',
 			'input_genotype',
 			'input_genotype_phenotype',
 			'input_variant',
-		].each { defaultInputTable(it) }
-		def tbl = kwargs.inputTables
+		].inject([:]) { m, defaultTable ->
+			m[tableKey(defaultTable)] = defaultTable
+			m
+		}
+		def tableValue = { tableName, id ->
+			(
+				(kwargs.inputTables[tableName] != null) ?
+					kwargs.inputTables[tableName] :
+					defaultTableMap[tableName]
+			) +	(
+				(kwargs.newPipelineJob) ?
+					"_$id" :
+					''
+			)
+		}
 		
-		def builder = new DependencyGraphBuilder()
-//		def input_genotype = builder.dependency()
-		Dependency drugRecommendation = builder.dependency(id: tbl.drugRecommendation, target: tbl.drugRecommendation, rule: { -> 
-			genotypeToDrugRecommendation(sql, genotype: tbl.genotype, intoTable: tbl.drugRecommendation)
-			/* TODO: make sure this handles duplicates appropriately, either by filtering them out, 
-			 * or by indicating whether the recommendation is from genotype or phenotype information
-			 */
-			genePhenotypeToDrugRecommendation(sql, saveAs:'existing', genePhenotype: tbl.genePhenotype, intoTable: tbl.drugRecommendation)
-		}) {
-			dependency(id: tbl.genotype, target: tbl.genotype, rule: { ->
-				/* TODO: specify a way of dealing with tooManyHaplotypes errors
+		def buildDrugRecommendations = { tbl ->
+			def builder = new DependencyGraphBuilder()
+			Dependency drugRecommendation = builder.dependency(id: tbl.drugRecommendation, target: tbl.drugRecommendation, rule: { ->
+				genotypeToDrugRecommendation(sql, genotype: tbl.genotype, intoTable: tbl.drugRecommendation)
+				/* TODO: make sure this handles duplicates appropriately, either by filtering them out,
+				 * or by indicating whether the recommendation is from genotype or phenotype information
 				 */
-				geneHaplotypeToGenotype(sql, geneHaplotype: tbl.geneHaplotype, intoTable: tbl.genotype)
+				genePhenotypeToDrugRecommendation(sql, saveAs:'existing', genePhenotype: tbl.genePhenotype, intoTable: tbl.drugRecommendation)
 			}) {
-				dependency(id: tbl.geneHaplotype, target: tbl.geneHaplotype, rule: { ->
-					snpToGeneHaplotype(sql, variant: tbl.variant, intoTable: tbl.geneHaplotype)
+				dependency(id: tbl.genotype, target: tbl.genotype, rule: { ->
+					/* TODO: specify a way of dealing with tooManyHaplotypes errors
+					 */
+					geneHaplotypeToGenotype(sql, geneHaplotype: tbl.geneHaplotype, intoTable: tbl.genotype)
 				}) {
-					dependency(id: tbl.variant, target: tbl.variant, rule: { ->
-						Sql.insert(sql, tbl.variant, ['snp_id', 'allele'], kwargs.variants)
-					})
+					dependency(id: tbl.geneHaplotype, target: tbl.geneHaplotype, rule: { ->
+						snpToGeneHaplotype(sql, variant: tbl.variant, intoTable: tbl.geneHaplotype)
+					}) {
+						dependency(id: tbl.variant, target: tbl.variant, rule: { ->
+							createVariant(sql, tbl.variant, kwargs.variants)
+						})
+					}
+				}
+				dependency(id: tbl.genePhenotype, target: tbl.genePhenotype, rule: { ->
+					genotypeToGenePhenotype(sql, genotype: tbl.genotype, intoTable: tbl.genePhenotype)
+				}) {
+					dependency(refId: tbl.genotype)
 				}
 			}
-			dependency(id: tbl.genePhenotype, target: tbl.genePhenotype, rule: { ->
-				genotypeToGenePhenotype(sql, genotype: tbl.genotype, intoTable: tbl.genePhenotype)
-			}) {
-				dependency(refId: tbl.genotype)
+			try {
+				drugRecommendation.build()
+			} finally {
+				/* Delete tables (except for the final drug recommendations)
+				 * TODO: we should insert the drug recommendations into a persistent table
+				 */
+				tbl.keySet().grep { it != 'drugRecommendation' }.each { tableName ->
+					sql.execute "drop table if exists ${tbl[tableName]}".toString()
+				}
 			}
 		}
-		try {
-			drugRecommendation.build()
-		} finally {
-			tbl.values().grep { it != 'input_drug_recommendation' }.each { table -> 
-				sql.execute "drop table if exists ${table}".toString() 
+		
+		def buildTbl = { id = null -> 
+			defaultTableMap.keySet().inject([:]) { m, tableName ->
+				m[tableName] = tableValue(tableName, id)
+				m
 			}
+		}
+		if (kwargs.newPipelineJob) {
+			Sql.withUniqueId(sql, kwargs.pipelineJobTable) { id ->
+				def tbl = buildTbl(id)
+				buildDrugRecommendations(tbl)
+			}
+		} else {
+			def tbl = buildTbl()
+			buildDrugRecommendations(tbl)
 		}
 	}
 	

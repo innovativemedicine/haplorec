@@ -157,3 +157,9 @@ CREATE TABLE genotype_drug_recommendation (
     primary key (gene_name, haplotype_name1, haplotype_name2, drug_recommendation_id),
     foreign key (drug_recommendation_id) references drug_recommendation(id)
 ) {{SQL_ENGINE}};
+
+CREATE TABLE pipeline_job (
+    id bigint not null auto_increment,
+    job_name varchar({{SQL_JOB_NAME_LENGTH}}),
+    primary key (id)
+) {{SQL_ENGINE}};

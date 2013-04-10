@@ -52,7 +52,7 @@ public class DBTest extends GroovyTestCase {
         return sql
     }
 
-    def insertSql(sql, table, columns, rows) {
+    def insert(sql, table, columns, rows) {
         if (rows.size() > 0) {
             sql.withBatch("insert into ${table}(${columns.join(', ')}) values (${(['?'] * columns.size()).join(', ')})".toString()) { ps ->
                 rows.each { r -> ps.addBatch(r) }
@@ -60,7 +60,7 @@ public class DBTest extends GroovyTestCase {
         }
     }
 
-    def selectSql(sql, table, columns) {
+    def select(sql, table, columns) {
         def hashRowsToListRows = { rows, cols -> 
             rows.collect { r -> 
                 cols.collect { r[it] } 
@@ -68,6 +68,12 @@ public class DBTest extends GroovyTestCase {
         }
         return hashRowsToListRows(sql.rows("select ${columns.join(', ')} from $table".toString()), columns)
     }
+	
+	def selectCount(groovy.sql.Sql sql, table) {
+		return (
+			sql.rows("select count(*) as count from $table".toString())
+		)[0]['count']
+	}
 
     private static def parseCreateTableStatement(createTableStatment) {
         def m = (createTableStatment =~ /(?i)create\s+table\s+([^(]+)/)
@@ -88,7 +94,7 @@ public class DBTest extends GroovyTestCase {
                     def (tableName, columns) = parseCreateTableStatement(createTableStatment)
                     sql.execute createTableStatment
                     tableNames.add(tableName)
-                    insertSql(sql, tableName, columns, rows)
+                    insert(sql, tableName, columns, rows)
                 } else {
                     def (createTableStatment) = t
                     def (tableName, _) = parseCreateTableStatement(createTableStatment)

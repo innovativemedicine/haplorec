@@ -5,15 +5,6 @@
 --     primary key (gene_name, haplotype_name)
 -- ) {{SQL_ENGINE}};
 
-CREATE TABLE haplotype_snps (
-    gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
-    haplotype_name varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
-    snp_id varchar({{SQL_SNP_ID_LENGTH}}),
-    allele varchar({{SQL_ALLELE_LENGTH}}),
-    -- foreign key (gene_name, haplotype_name) references haplotype (gene_name, haplotype_name),
-    primary key (gene_name, haplotype_name, snp_id)
-) {{SQL_ENGINE}};
-
 -- May be useful later to provide phenotype-specific data
 -- CREATE TABLE phenotype (
 --     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
@@ -158,8 +149,45 @@ CREATE TABLE genotype_drug_recommendation (
     foreign key (drug_recommendation_id) references drug_recommendation(id)
 ) {{SQL_ENGINE}};
 
-CREATE TABLE pipeline_job (
+CREATE TABLE job (
     id bigint not null auto_increment,
     job_name varchar({{SQL_JOB_NAME_LENGTH}}),
     primary key (id)
 ) {{SQL_ENGINE}};
+
+{% macro job_table(table_suffix) -%}
+CREATE TABLE job_{{table_suffix}} (
+    job_id bigint not null,
+    {{ caller() }}
+    foreign key (job_id) references job(id)
+) {{SQL_ENGINE}};
+{%- endmacro -%}
+
+{% call job_table('drug_recommendation') -%}
+    drug_recommendation_id bigint,
+{%- endcall %}
+
+{% call job_table('gene_haplotype') -%}
+    gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
+    haplotype_name varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
+    index (gene_name, haplotype_name),
+{%- endcall %}
+
+{% call job_table('gene_phenotype') -%}
+    gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
+    phenotype_name varchar({{SQL_PHENOTYPE_NAME_LENGTH}}),
+    index (gene_name, phenotype_name),
+{%- endcall %}
+
+{% call job_table('genotype') -%}
+    gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
+    haplotype_name1 varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
+    haplotype_name2 varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
+    index (gene_name, haplotype_name1, haplotype_name2),
+{%- endcall %}
+
+{% call job_table('variant') -%}
+    snp_id varchar({{SQL_SNP_ID_LENGTH}}),
+    allele varchar({{SQL_ALLELE_LENGTH}}),
+    index (snp_id, allele),
+{%- endcall %}

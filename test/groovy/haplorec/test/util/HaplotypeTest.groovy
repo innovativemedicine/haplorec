@@ -31,25 +31,21 @@ public class HaplotypeTest extends DBTest {
         tearDownDB(TEST_DB, sql)
     }
 
-    void testGenePhenotypeToDrugRecommendation() {
-    }
-
-    void testSnpToGeneHaplotype() {
-    }
-
-    void testGenotypeToDrugRecommendation() {
-    }
+//    void testGenePhenotypeToDrugRecommendation() {
+//    }
+//
+//    void testSnpToGeneHaplotype() {
+//    }
+//
+//    void testGenotypeToDrugRecommendation() {
+//    }
 	
 	def drugRecommendationsTest(Map kwargs = [:], expectedDrugRecommendationRows) {
-		haplorec.util.Sql.createTableFromExisting(sql, 'input_variant',
-			existingTable: 'haplotype_snps', 
-			columns: ['snp_id', 'allele'], 
-			indexColumns: ['snp_id', 'allele'])
 		try {
 			Haplotype.drugRecommendations(kwargs, sql)
-			assertEquals(expectedDrugRecommendationRows, select(sql, 'input_drug_recommendation', ['drug_recommendation_id']))
+			assertEquals(expectedDrugRecommendationRows, select(sql, 'job_drug_recommendation', ['drug_recommendation_id']))
 		} finally {
-			sql.execute "drop table if exists input_variant"
+			sql.execute "drop table if exists job_variant"
 		}
 	}
 	

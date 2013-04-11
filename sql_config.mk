@@ -3,7 +3,7 @@
 # haplotype
 export SQL_HAPLOTYPE_NAME_LENGTH = 50
 export SQL_GENE_NAME_LENGTH = 50
-# haplotype_snps
+# gene_haplotype_variant 
 export SQL_HAPLOTYPE_ID_LENGTH = 50
 export SQL_SNP_ID_LENGTH = 50
 export SQL_ALLELE_LENGTH = 50

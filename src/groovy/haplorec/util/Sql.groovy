@@ -36,7 +36,12 @@ class Sql {
 			kwargs.query :
 			"select ${kwargs.columns.join(', ')} from ${kwargs.existingTable}".toString()
 		// create the temporary table using the right datatypes
-		sql.executeUpdate "create ${(kwargs.temporary) ? 'temporary' : ''} table $newTable as ($q) ${(kwargs.dontRunQuery) ? 'limit 0' : ''}".toString()
+        def createTableStmt = "create ${(kwargs.temporary) ? 'temporary' : ''} table $newTable as ($q) ${(kwargs.dontRunQuery) ? 'limit 0' : ''}".toString()
+        if (kwargs.sqlParams != null) {
+            sql.executeUpdate createTableStmt, kwargs.sqlParams
+        } else {
+            sql.executeUpdate createTableStmt
+        }
 		// create the temporary table using the right datatypes
 		sql.executeUpdate "alter table $newTable engine = ${kwargs.saveAs}".toString()
 		if (kwargs.indexColumns != null) {
@@ -52,26 +57,32 @@ class Sql {
     // saveAs = (MEMORY|MyISAM|query|existing)
     static def selectWhereSetContains(Map kwargs = [:], groovy.sql.Sql sql, singlesetTable, multisetTable, setColumns, multisetGroupColumns, intoTable) {
         setDefaultKwargs(kwargs)
+        if (kwargs.sqlParams == null) { kwargs.sqlParams = [:] }
+		// use as List to ensure a consistent iteration ordering for proper query construction
+		def sqlParamsColumns = kwargs.sqlParams.keySet() as List
         def setColumnsStr = setColumns.join(', ')
         def multisetGroupColumnsStr = multisetGroupColumns.join(', ')
+		// WARNING: singlesetWhere might conflict with multisetTable columns (workaround would be to prefix singleset columns with table name)
         def query = """\
-			select distinct ${multisetGroupColumns.collect { "counts_table.$it" }.join(', ')} from ${multisetTable} outer_table
+			select distinct ${(sqlParamsColumns.collect { ":$it" } + multisetGroupColumns.collect { "counts_table.$it" }).join(', ')} from ${multisetTable} outer_table
 			join (
 			    select ${multisetGroupColumnsStr}, count(*) as group_count
 			    from ${multisetTable} join ${singlesetTable} using (${setColumnsStr})
+				${(kwargs.singlesetWhere != null) ? "where ${kwargs.singlesetWhere}" : ''}
 			    group by ${multisetGroupColumnsStr} 
 			) counts_table
 			where 
 				${multisetGroupColumns.collect { "counts_table.$it = outer_table.$it" }.join(' and ')} 
 				and counts_table.group_count = least(
-				    (select count(*) from ${singlesetTable}), 
+				    (select count(*) from ${singlesetTable} ${(kwargs.singlesetWhere != null) ? "where ${kwargs.singlesetWhere}" : ''}), 
 				    (select count(*) from ${multisetTable} inner_table where ${multisetGroupColumns.collect { "inner_table.$it = outer_table.$it" }.join(' and ')})
 				)
         """
-        return selectAs(sql, query, multisetGroupColumns, 
+        return selectAs(sql, query, sqlParamsColumns + multisetGroupColumns, 
 			intoTable:intoTable, 
 			indexColumns:kwargs.indexColumns, 
-			saveAs:kwargs.saveAs)
+			saveAs:kwargs.saveAs,
+            sqlParams:(kwargs.sqlParams == [:]) ? null : kwargs.sqlParams)
     }
 
 	// columnMap = ['x':'x', 'y':['y1', 'y2']]
@@ -79,6 +90,7 @@ class Sql {
 	//   1  2    1  2   3
 	//   1  3
 	static def groupedRowsToColumns(Map kwargs = [:], groovy.sql.Sql sql, rowTable, columnTable, groupBy, columnMap) {
+        if (kwargs.sqlParams == null) { kwargs.sqlParams = [:] }
 		//defaults
 		def badGroup = (kwargs.badGroup == null) ? { r -> } : kwargs.badGroup
 		// sqlInsert == null
@@ -92,9 +104,10 @@ class Sql {
 			maxGroupSize = 1
 		}
 		def columnTableColumns = columnMap.values().flatten()
-		def columnTableColumnStr = columnTableColumns.join(', ')
+		def sqlParamsColumns = kwargs.sqlParams.keySet() as List
+		def sqlParamsValues = sqlParamsColumns.collect { kwargs.sqlParams[it] }
 		def insertGroup = { sqlI, g ->
-			sqlI.withBatch("insert into ${columnTable}(${columnTableColumnStr}) values (${(['?'] * columnTableColumns.size()).join(', ')})".toString()) { ps ->
+			sqlI.withBatch("insert into ${columnTable}(${(sqlParamsColumns + columnTableColumns).join(', ')}) values (${(['?'] * (sqlParamsColumns.size() + columnTableColumns.size())).join(', ')})".toString()) { ps ->
 				if (g.size() > maxGroupSize) {
 					badGroup(g)
 				} else {
@@ -110,7 +123,7 @@ class Sql {
 						}
 						i += 1
 					}
-					ps.addBatch(columnTableColumns.collect { values[it] })
+					ps.addBatch(sqlParamsValues + columnTableColumns.collect { values[it] })
 				}
 			}
 		}
@@ -149,10 +162,9 @@ class Sql {
     private static def selectAs(Map kwargs = [:], groovy.sql.Sql sql, query, columns) {
         setDefaultKwargs(kwargs)
         if (engines.any { kwargs.saveAs == it }) {
-            def q = query
 			createTableFromExisting(sql, kwargs.intoTable, 
 				saveAs:kwargs.saveAs, 
-				query:q, 
+				query:query, 
 				indexColumns:kwargs.indexColumns)
 			// TODO: figure out why i decided not run the query in the create table prior...
 //            def qInsertInto = query('INTO ${kwargs.intoTable}')
@@ -164,18 +176,26 @@ class Sql {
 				insert into ${kwargs.intoTable} (${columns.join(', ')})
 				$query""".toString()
 //            def qInsertInto = query("INTO ${kwargs.intoTable}").toString()
-            sql.execute qInsertInto
+            if (kwargs.sqlParams != null) {
+                sql.execute qInsertInto, kwargs.sqlParams
+            } else {
+                sql.execute qInsertInto
+            }
         } else {
             throw new IllegalArgumentException("Unknown saveAs type for outputting SQL results; saveAs was ${kwargs.saveAs} but must be one of " + validSaveAs.join(', '))
         }
     }
 	
 	static def insert(groovy.sql.Sql sql, table, columns, rows) {
-		if (rows.size() > 0) {
+		if (rows != null && rows.size() > 0) {
 			sql.withBatch("insert into ${table}(${columns.join(', ')}) values (${(['?'] * columns.size()).join(', ')})".toString()) { ps ->
 				rows.each { r -> ps.addBatch(r) }
 			}
 		}
+	}
+	
+	static def insert(groovy.sql.Sql sql, table, rows) {
+		insert(sql, table, [], rows)
 	}
 	
 	private static def setDefaultKwargs(Map kwargs) {
@@ -186,6 +206,17 @@ class Sql {
 		}
 		setDefault('saveAs', DEFAULT_ENGINE_SAVE_AS)
 	}
+
+    /* groovy.sql.Sql.* methods don't handle an empty parameter map well; this is just a convenience wrapper that hands such 
+     * a method no params if the params map is empty
+     */
+    static def sqlWithParams(sqlMethod, stmt, params) {
+        if (params != [:]) {
+            return sqlMethod(stmt)
+        } else {
+            return sqlMethod(stmt, params)
+        }
+    }
 	
 	/* Execute a block of code using a unique identifier generated from the autoincrement column when inserting an empty row into the provided table Insert an empty row into $table,
 	 * Keyword arguments:
@@ -197,6 +228,7 @@ class Sql {
 	static def withUniqueId(Map kwargs = [:], groovy.sql.Sql sql, table, Closure doWithId) {
 		if (kwargs.idColumn == null) { kwargs.idColumn = 'id' }
 		if (kwargs.values == null) { kwargs.values = [:] }
+		if (kwargs.deleteAfter == null) { kwargs.deleteAfter = true }
 		// make sure this works with multiple columns
 		def extraColumns = kwargs.values.keySet()
 		def keys = sql.executeInsert """\
@@ -207,7 +239,9 @@ class Sql {
 		try {
 			doWithId(id)
 		} finally {
-			sql.execute "delete from $table where ${kwargs.idColumn} = ?", id
+            if (kwargs.deleteAfter) {
+                sql.execute "delete from $table where ${kwargs.idColumn} = ?", id
+            }
 		}
 	}
 

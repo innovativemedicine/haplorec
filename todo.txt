@@ -93,8 +93,22 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
     - test using different return types:
       - query/existing/engine
 - TODO: make sure tables (intermediate result and schema tables) have indexes on "set columns", since joins will be happening on these columns
-- start unit testing Haplotype functions
 - make a function for running the whole pipeline from stage 1 (ideally, have some way to hook into the pipeline at various steps, and follow through to a final result)
 - refactor Haplotype functions to insert intermediate results into a persistent tables instead of temporary input_* tables, with results identified by pipeline_job_id's
+- start unit testing Haplotype functions
+  - assert each job table in the pipeline
+  - generate some comprehensive test data (use madeup stuff first that is understandable)
+  - then use real data
+
+- TODO: fix issue where with selectWhereSetContains where a table with duplicate variants doesn't get output correctly (select distinct on variants, then rejoin mappingings with variants)
+    - check what the input list of variants looks like (is it a multiset or just a set?)
+      - looks like (snp_id, allele, sample_id) is unique.  In reality though, a patient's genome should have 2 chromosomes, so a given snp can occur 
+        at most twice (though not on the same chromosome).  However, we need the input to clarify what snps occur on the same chromosome (otherwise we'd 
+        map to haplotypes that are in reality split across 2 chromosomes)
+        - TODO: ask lars about this
+        - TODO: pending me being right, add a chromosome column to job_variant, and use it as a orderBy in the call to groupedRowsToColumns (in addition 
+          to haplotype_name)
+        - TODO: the granularity of a job will be a set of patients; figure out how to handle this in the pipeline
+
 
 Questions:

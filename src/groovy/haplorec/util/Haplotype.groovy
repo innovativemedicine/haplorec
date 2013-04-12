@@ -44,7 +44,10 @@ public class Haplotype {
 				assert group.collect { row -> row['gene_name'] }.unique().size() == 1 : "all haplotypes belong to the same gene"
 				def haplotypes = group.collect { row -> row['haplotype_name'] }
 				kwargs.tooManyHaplotypes(gene, haplotypes)
-			})
+			},
+			sqlParams:kwargs.sqlParams,
+			rowTableWhere:"${kwargs.geneHaplotype}.job_id = :job_id",
+		)
     }
 
     // inputGenePhenotype = create table(gene_name, phenotype_name, index(gene_name, phenotype_name))
@@ -78,6 +81,7 @@ public class Haplotype {
             kwargs.geneHaplotype,
             saveAs:kwargs.saveAs, 
             sqlParams:kwargs.sqlParams,
+			singlesetWhere:"${kwargs.variant}.job_id = :job_id",
         )
     }
 
@@ -94,6 +98,7 @@ public class Haplotype {
             kwargs.drugRecommendation,
             saveAs:kwargs.saveAs, 
             sqlParams:kwargs.sqlParams,
+			singlesetWhere:"${kwargs.genotype}.job_id = :job_id",
         )
     }
 
@@ -105,11 +110,13 @@ public class Haplotype {
         if (kwargs.genotype == null) { kwargs.genotype = 'job_genotype' }
 		return Sql.selectAs(sql, """\
 			select :job_id, gene_name, phenotype_name from ${kwargs.genotype} 
-			join genotype_phenotype using (gene_name, haplotype_name1, haplotype_name2)""".toString(),
+			join genotype_phenotype using (gene_name, haplotype_name1, haplotype_name2)
+			where ${kwargs.genotype}.job_id = :job_id""".toString(),
 			['job_id', 'gene_name', 'phenotype_name'],
 			saveAs:kwargs.saveAs,
 			intoTable:kwargs.genePhenotype,
-            sqlParams:kwargs.sqlParams)
+            sqlParams:kwargs.sqlParams,
+		)
 	}
 
 	static def createVariant(Map kwargs = [:], groovy.sql.Sql sql) {
@@ -139,12 +146,21 @@ public class Haplotype {
 		}
 
         if (kwargs.jobId == null) {
+            // Create a new job
             List sqlParamsColumns = (kwargs.sqlParams?.keySet() ?: []) as List
             def keys = Sql.sqlWithParams sql.&executeInsert, """\
                 insert into job(${sqlParamsColumns.collect { ":$it" }.join(', ')}) 
                 values(${(['?']*sqlParamsColumns.size()).join(', ')})""".toString(), 
                 kwargs.sqlParams
                 kwargs.jobId = keys[0][0]
+        } else {
+            // Given an existing jobId, delete all job_* rows, then rerun the pipeline
+            if ((sql.rows("select count(*) as count from ${kwargs.pipelineJobTable}".toString()))[0]['count'] != 1) {
+                throw new IllegalArgumentException("No such job with job_id ${kwargs.jobId}")
+            }
+            tbl.values().each { jobTable ->
+                sql.execute "delete from $jobTable where id = :jobId".toString(), kwargs
+            }
         }
 
         def pipelineKwargs = tbl + [
@@ -152,46 +168,50 @@ public class Haplotype {
                 job_id:kwargs.jobId,
             ]
         ]
-		
-		def insertOrGenerateRows = { outputTable, Closure generateRows, additionalKwargs = null ->
-			def rowsKey = outputTable + 's'
-			if (kwargs[rowsKey] != null) {
-				def rows = kwargs[rowsKey]
-				Sql.insert(sql, kwargs[outputTable], rows)
-			} else {
-				generateRows((additionalKwargs != null) ? pipelineKwargs + additionalKwargs : pipelineKwargs, sql)
-			}
-		}
-
         def builder = new DependencyGraphBuilder()
-        Dependency drugRecommendation = builder.dependency(id: tbl.drugRecommendation, target: tbl.drugRecommendation, rule: { ->
-            insertOrGenerateRows('drugRecommendation', this.&genotypeToDrugRecommendation)
+        Map dependencies = [:]
+        dependencies.drugRecommendation = builder.dependency(id: tbl.drugRecommendation, target: tbl.drugRecommendation, rule: { ->
+            genotypeToDrugRecommendation(pipelineKwargs, sql)
             /* TODO: make sure this handles duplicates appropriately, either by filtering them out,
              * or by indicating whether the recommendation is from genotype or phenotype information
              */
-            insertOrGenerateRows('drugRecommendation', this.&genePhenotypeToDrugRecommendation, [saveAs:'existing'])
+            genePhenotypeToDrugRecommendation(pipelineKwargs + [saveAs:'existing'], sql)
         }) {
-            dependency(id: tbl.genotype, target: tbl.genotype, rule: { ->
+            dependencies.genotype = dependency(id: tbl.genotype, target: tbl.genotype, rule: { ->
                 /* TODO: specify a way of dealing with tooManyHaplotypes errors
                  */
-                insertOrGenerateRows('genotype', this.&geneHaplotypeToGenotype)
+                geneHaplotypeToGenotype(pipelineKwargs, sql)
             }) {
-                dependency(id: tbl.geneHaplotype, target: tbl.geneHaplotype, rule: { ->
-                    insertOrGenerateRows('geneHaplotype', this.&snpToGeneHaplotype)
+                dependencies.geneHaplotype = dependency(id: tbl.geneHaplotype, target: tbl.geneHaplotype, rule: { ->
+                    snpToGeneHaplotype(pipelineKwargs, sql)
                 }) {
-                    dependency(id: tbl.variant, target: tbl.variant, rule: { ->
+                    dependencies.variant = dependency(id: tbl.variant, target: tbl.variant, rule: { ->
                         createVariant(pipelineKwargs, sql)
                     })
                 }
             }
-            dependency(id: tbl.genePhenotype, target: tbl.genePhenotype, rule: { ->
-                insertOrGenerateRows('genePhenotype', this.&genotypeToGenePhenotype)
+            dependencies.genePhenotype = dependency(id: tbl.genePhenotype, target: tbl.genePhenotype, rule: { ->
+                genotypeToGenePhenotype(pipelineKwargs, sql)
             }) {
                 dependency(refId: tbl.genotype)
             }
         }
-        drugRecommendation.build()
 
+        // For datasets that are already provided, insert their rows into the approriate job_* table, and mark them as built
+        Set<Dependency> built = []
+        dependencies.keySet().each { table ->
+			def rowsKey = table + 's'
+			if (kwargs[rowsKey] != null) {
+				def rows = kwargs[rowsKey]
+				rows.each { r ->
+					r.add(0, kwargs.jobId)
+				}
+				Sql.insert(sql, tbl[table], rows)
+                built.add(dependencies[table])
+			}
+        }
+
+        dependencies.drugRecommendation.build(built)
 	}
 	
 }

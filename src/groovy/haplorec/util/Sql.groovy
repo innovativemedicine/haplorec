@@ -131,7 +131,8 @@ class Sql {
 		List groups = []
 		List group = []
 		def rowCols = columnMap.keySet()
-		sql.eachRow("select * from ${rowTable} order by ${orderBy.join(', ')}".toString()) { row ->
+		def rowQuery = "select * from ${rowTable} ${(kwargs.rowTableWhere != null) ? "where ${kwargs.rowTableWhere}" : ''} order by ${orderBy.join(', ')}".toString() 
+		def handleRow = { row ->
 			def nextRowGroup = groupBy.collect { row[it] }
 			if (lastRowGroup == null) {
 				lastRowGroup = nextRowGroup
@@ -147,6 +148,11 @@ class Sql {
 					group = []
 				}
 			}
+		}
+		if (kwargs.sqlParams != [:]) {
+			sql.eachRow(rowQuery, kwargs.sqlParams) { r -> handleRow(r) }
+		} else {
+			sql.eachRow(rowQuery) { r -> handleRow(r) }
 		}
 		if (group.size() != 0) {
 			groups.add(group)
@@ -188,7 +194,7 @@ class Sql {
 	
 	static def insert(groovy.sql.Sql sql, table, columns, rows) {
 		if (rows != null && rows.size() > 0) {
-			sql.withBatch("insert into ${table}(${columns.join(', ')}) values (${(['?'] * columns.size()).join(', ')})".toString()) { ps ->
+			sql.withBatch("insert into ${table}${(columns.size() > 0) ? "(${columns.join(', ')})" : ''} values (${(['?'] * rows[0].size()).join(', ')})".toString()) { ps ->
 				rows.each { r -> ps.addBatch(r) }
 			}
 		}

@@ -193,6 +193,7 @@ public class SqlTest extends DBTest {
     }
 	
 	void testSelectWhereSetContains() {
+
         selectWhereSetContainsTest(
 			// { (x, y) }
 			"create table A(x integer, y integer)",
@@ -229,6 +230,7 @@ public class SqlTest extends DBTest {
                 [20],
                 [30],
             ])
+
 		selectWhereSetContainsTest(
 			// { (a, b) }
 			"create table A(a varchar(10), b varchar(5))",
@@ -265,7 +267,247 @@ public class SqlTest extends DBTest {
 				['20', '20_'],
 				['30', '30_'],
 			])
+
+            /*
+        selectWhereSetContainsTest(
+            // a, b, { (x, y) }
+			"create table A(a integer, b integer, x integer, y integer)",
+            [
+                [11, 12, 1, 1],
+                [11, 12, 1, 2],
+                [11, 12, 1, 3],
+                [11, 12, 1, 4],
+
+                [13, 14, 1, 1],
+                [13, 14, 1, 2],
+                [13, 14, 1, 3],
+                [13, 14, 1, 4],
+            ],
+			// z, { (x, y) }
+			"create table B(z integer, x integer, y integer)",
+            [
+                // equal set
+                [10, 1, 1],
+                [10, 1, 2],
+                [10, 1, 3],
+                [10, 1, 4],
+                // subset
+                [20, 1, 1],
+                [20, 1, 2],
+                [20, 1, 3],
+                // superset 
+                [30, 1, 1],
+                [30, 1, 2],
+                [30, 1, 3],
+                [30, 1, 4],
+                [30, 1, 5],
+                // nonzero intersection, but neither subset nor superset 
+                [40, 1, 1],
+                [40, 1, 5],
+            ],
+			// a, b, z, { (x, y) }
+            [
+                [11, 12, 10],
+                [11, 12, 20],
+                [11, 12, 30],
+
+                [13, 14, 10],
+                [13, 14, 20],
+                [13, 14, 30],
+            ])
+            */
+
     }
+	
+	def selectWhereSetContainsTest2(Map kwargs = [:], tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows) {
+		def (tableA, tableAColumns) = parseCreateTableStatement(tableACreateStmt)
+		def (tableB, tableBColumns) = parseCreateTableStatement(tableBCreateStmt)
+		try {
+			tableTest(sql,
+				[
+					[tableACreateStmt, tableARows],
+					[tableBCreateStmt, tableBRows],
+				]
+			) {
+				def setColumns = tableBColumns.grep { b -> tableAColumns.any { a -> b == a } }
+				Sql.selectWhereSetContains2(kwargs + [intoTable:'C'], sql, tableA, tableB, setColumns)
+				assertEquals(expectRows.sort(), select(sql, 'C', kwargs.selectAnswer ?: kwargs.select).sort())
+			}
+		} finally {
+			sql.execute "drop table if exists C"
+		}
+	}
+	
+	void testSelectWhereSetContains2() {
+
+		selectWhereSetContainsTest2(
+			// { (x, y) }
+			"create table A(x integer, y integer)",
+			[
+				[1, 1],
+				[1, 2],
+				[1, 3],
+				[1, 4],
+			],
+			// z, { (x, y) }
+			tableBGroupBy: ['z'],
+			"create table B(z integer, x integer, y integer)",
+			[
+				// equal set
+				[10, 1, 1],
+				[10, 1, 2],
+				[10, 1, 3],
+				[10, 1, 4],
+				// subset
+				[20, 1, 1],
+				[20, 1, 2],
+				[20, 1, 3],
+				// superset
+				[30, 1, 1],
+				[30, 1, 2],
+				[30, 1, 3],
+				[30, 1, 4],
+				[30, 1, 5],
+				// nonzero intersection, but neither subset nor superset
+				[40, 1, 1],
+				[40, 1, 5],
+			],
+			select: ['z'],
+			[
+				[10],
+				[20],
+				[30],
+			])
+
+		selectWhereSetContainsTest2(
+			// { (a, b) }
+			"create table A(a varchar(10), b varchar(5))",
+			[
+				['10_chars__', '5ch_1'],
+				['10_chars__', '5ch_2'],
+				['10_chars__', '5ch_3'],
+				['10_chars__', '5ch_4'],
+			],
+			// c, d, { (a, b) }
+			tableBGroupBy: ['c', 'd'],
+			"create table B(c varchar(10), d varchar(5), a varchar(10), b varchar(5))",
+			[
+				// equal set
+				['10', '10_', '10_chars__', '5ch_1'],
+				['10', '10_', '10_chars__', '5ch_2'],
+				['10', '10_', '10_chars__', '5ch_3'],
+				['10', '10_', '10_chars__', '5ch_4'],
+				// subset
+				['20', '20_', '10_chars__', '5ch_1'],
+				['20', '20_', '10_chars__', '5ch_2'],
+				['20', '20_', '10_chars__', '5ch_3'],
+				// superset
+				['30', '30_', '10_chars__', '5ch_1'],
+				['30', '30_', '10_chars__', '5ch_2'],
+				['30', '30_', '10_chars__', '5ch_3'],
+				['30', '30_', '10_chars__', '5ch_4'],
+				['30', '30_', '10_chars__', '5ch_5'],
+				// nonzero intersection, but neither subset nor superset
+				['40', '40_', '10_chars__', '5ch_1'],
+				['40', '40_', '10_chars__', '5ch_5'],
+			],
+			select: ['c', 'd'],	
+			[
+				['10', '10_'],
+				['20', '20_'],
+				['30', '30_'],
+			])
+
+		selectWhereSetContainsTest2(
+			// a, b, { (x, y) }
+			tableAGroupBy: ['a', 'b'],
+			"create table A(a integer, b integer, x integer, y integer)",
+			[
+				[11, 12, 1, 1],
+				[11, 12, 1, 2],
+				[11, 12, 1, 3],
+				[11, 12, 1, 4],
+
+				[13, 14, 1, 1],
+				[13, 14, 1, 2],
+				[13, 14, 1, 3],
+				[13, 14, 1, 4],
+			],
+			// z, { (x, y) }
+			tableBGroupBy: ['z'],
+			"create table B(z integer, x integer, y integer)",
+			[
+				// equal set
+				[10, 1, 1],
+				[10, 1, 2],
+				[10, 1, 3],
+				[10, 1, 4],
+				// subset
+				[20, 1, 1],
+				[20, 1, 2],
+				[20, 1, 3],
+				// superset
+				[30, 1, 1],
+				[30, 1, 2],
+				[30, 1, 3],
+				[30, 1, 4],
+				[30, 1, 5],
+				// nonzero intersection, but neither subset nor superset
+				[40, 1, 1],
+				[40, 1, 5],
+			],
+			// a, b, z, { (x, y) }
+			select: ['a', 'b', 'z'],
+			[
+				[11, 12, 10],
+				[11, 12, 20],
+				[11, 12, 30],
+
+				[13, 14, 10],
+				[13, 14, 20],
+				[13, 14, 30],
+			])
+		
+		selectWhereSetContainsTest2(
+			sqlParams:[somevar:55],
+			// { (x, y) }
+			"create table A(x integer, y integer)",
+			[
+				[1, 1],
+				[1, 2],
+				[1, 3],
+				[1, 4],
+			],
+			// z, { (x, y) }
+			tableBGroupBy: ['z'],
+			"create table B(z integer, x integer, y integer)",
+			[
+				// equal set
+				[10, 1, 1],
+				[10, 1, 2],
+				[10, 1, 3],
+				[10, 1, 4],
+				// subset
+				[20, 1, 1],
+				[20, 1, 2],
+				[20, 1, 3],
+				// superset
+				[30, 1, 1],
+				[30, 1, 2],
+				[30, 1, 3],
+				[30, 1, 4],
+				[30, 1, 5],
+				// nonzero intersection, but neither subset nor superset
+				[40, 1, 1],
+				[40, 1, 5],
+			],
+			select: [':somevar'],
+			selectAnswer: ['55'],
+			[
+				[55],
+			])
+
+	}
 	
 	def withUniqueIdTest(Map kwargs = [:], tableCreateStmt) {
 		def (table, _) = parseCreateTableStatement(tableCreateStmt)

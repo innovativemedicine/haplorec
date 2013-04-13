@@ -84,6 +84,70 @@ class Sql {
 			saveAs:kwargs.saveAs,
             sqlParams:(kwargs.sqlParams == [:]) ? null : kwargs.sqlParams)
     }
+	
+	// saveAs = (MEMORY|MyISAM|query|existing)
+	static def selectWhereSetContains2(Map kwargs = [:], groovy.sql.Sql sql, tableA, tableB, setColumns) {
+		setDefaultKwargs(kwargs)
+		assert kwargs.tableAGroupBy != null || kwargs.tableBGroupBy != null
+		if (kwargs.tableBGroupBy == null) {
+			kwargs.tableBGroupBy = kwargs.tableAGroupBy
+			def tmp = tableA
+			tableA = tableB
+			tableB = tmp
+			tmp = kwargs.tableAWhere
+			kwargs.tableAWhere = kwargs.tableBWhere
+			kwargs.tableBWhere = tmp  
+		}
+		if (kwargs.select == null) {
+			if (kwargs.tableAGroupBy != null && kwargs.tableBGroupBy != null) {
+				kwargs.select = kwargs.tableAGroupBy + kwargs.tableBGroupBy
+			} else if (kwargs.tableAGroupBy != null) {
+				kwargs.select = kwargs.tableAGroupBy
+			} else {
+				kwargs.select = kwargs.tableBGroupBy
+			}
+		}
+		def groupBy = (kwargs.tableAGroupBy ?: []) + (kwargs.tableBGroupBy ?: [])
+		def groupByColumnsStr = groupBy.join(', ')
+		def selectColumnStr = { alias -> kwargs.select.collect { (it.matches(/^\?|:.*$/)) ? it : "$alias.$it" }.join(', ') }
+		def groupCountWhere
+		def evalWhere = { where, alias -> 
+			(where instanceof Closure) ? where(alias) : where
+		}
+		if (kwargs.tableAWhere == null && kwargs.tableBWhere == null) {
+			groupCountWhere = null
+		} else if (kwargs.tableAWhere != null && kwargs.tableBWhere == null) {
+			groupCountWhere = evalWhere(kwargs.tableAWhere, tableA)
+		} else if (kwargs.tableAWhere == null && kwargs.tableBWhere != null) {
+			groupCountWhere = evalWhere(kwargs.tableBWhere, tableB)
+		} else {
+			groupCountWhere = "(${evalWhere(kwargs.tableAWhere, tableA)}) and (${evalWhere(kwargs.tableBWhere, tableB)})"
+		}
+		def tableCount = { table, where, groupByColumns ->
+			def whereConjunctions =	((where != null) ? ["(${evalWhere(where, 'inner_table')})"] : []) + (groupByColumns ?: []).collect { "inner_table.$it = counts_table.$it" }
+			return "select count(*) from ${table} inner_table ${(whereConjunctions.size() > 0) ? "where " + whereConjunctions.join(' and ') : ''}"
+		}
+		def query = """\
+			select distinct ${selectColumnStr('counts_table')} from ${tableB} outer_table
+			join (
+			    select ${groupByColumnsStr}, count(*) as group_count
+			    from ${tableB} join ${tableA} using (${setColumns.join(', ')})
+				${(groupCountWhere != null) ? "where ${groupCountWhere}" : ''}
+			    group by ${groupByColumnsStr} 
+			) counts_table
+			where 
+				${kwargs.tableBGroupBy.collect { "counts_table.$it = outer_table.$it" }.join(' and ')} 
+				and counts_table.group_count = least(
+				    (${tableCount(tableA, kwargs.tableAWhere, kwargs.tableAGroupBy)}), 
+				    (${tableCount(tableB, kwargs.tableBWhere, kwargs.tableBGroupBy)})
+				)
+        """
+		return selectAs(sql, query, [],
+			intoTable:kwargs.intoTable,
+			indexColumns:kwargs.indexColumns,
+			saveAs:kwargs.saveAs,
+			sqlParams:kwargs.sqlParams)
+	}
 
 	// columnMap = ['x':'x', 'y':['y1', 'y2']]
 	// A(x, y) B(x, y1, y2)
@@ -171,7 +235,8 @@ class Sql {
 			createTableFromExisting(sql, kwargs.intoTable, 
 				saveAs:kwargs.saveAs, 
 				query:query, 
-				indexColumns:kwargs.indexColumns)
+				indexColumns:kwargs.indexColumns,
+				sqlParams:kwargs.sqlParams)
 			// TODO: figure out why i decided not run the query in the create table prior...
 //            def qInsertInto = query('INTO ${kwargs.intoTable}')
 //            sql.executeUpdate qInsertInto

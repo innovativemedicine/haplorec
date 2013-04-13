@@ -17,8 +17,13 @@ export SQL_DIPLOTYPE_EGS_LENGH = 50
 # phenotype
 export SQL_PHENOTYPE_LENGTH = 50
 export SQL_PHENOTYPE_NAME_LENGTH = 50
-# pipeline_job
+# job 
 export SQL_JOB_NAME_LENGTH = 50
+
+# job tables
+
+export SQL_PATIENT_ID_LENGTH = 50
+export SQL_PHYSICAL_CHROMOSOME_LENGTH = 50
 
 MYSQL_ENGINE_TYPE := InnoDB
 CUBRID_ENGINE_TYPE :=

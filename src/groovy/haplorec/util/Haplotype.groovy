@@ -5,6 +5,18 @@ import haplorec.util.dependency.DependencyGraphBuilder
 import haplorec.util.dependency.Dependency
 
 public class Haplotype {
+    private static def ambiguousVariants = 'job_patient_variant'
+    private static def unambiguousVariants = 'job_patient_chromosome_variant'
+    private static def defaultTables = [
+        variant            : ambiguousVariants,
+        genePhenotype      : 'job_patient_gene_phenotype',
+        genotype           : 'job_patient_genotype',
+        geneHaplotype      : 'job_patient_gene_haplotype',
+        drugRecommendation : 'job_patient_drug_recommendation',
+        job                : 'job',
+    ]
+    private static Set<CharSequence> jobTables = new HashSet(defaultTables.values() + [ambiguousVariants, unambiguousVariants])
+	
     private static def setDefaultKwargs(Map kwargs) {
         def setDefault = { property, defaultValue -> 
             if (kwargs[property] == null) {
@@ -12,6 +24,9 @@ public class Haplotype {
             }
         }
         setDefault('saveAs', 'existing')
+        defaultTables.keySet().each { tblName ->
+            setDefault(tblName, defaultTables[tblName]) 
+        }
     }
 
     // static def snpsToHaplotypes(String url, String username, String password, String driver = "com.mysql.jdbc.Driver") {
@@ -31,8 +46,6 @@ public class Haplotype {
 	 */
     static def geneHaplotypeToGenotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
-        if (kwargs.genotype == null) { kwargs.genotype = 'job_genotype' }
-        if (kwargs.geneHaplotype == null) { kwargs.geneHaplotype = 'job_gene_haplotype' }
 		// groupedRowsToColumns(sql, kwargs.geneHaplotype, kwargs.genotype)
 		// fill job_genotype using job_gene_haplotype, by mapping groups of 2 haplotypes (i.e. biallelic genes) to single job_genotype rows
 		Sql.groupedRowsToColumns(sql, kwargs.geneHaplotype, kwargs.genotype,
@@ -53,8 +66,6 @@ public class Haplotype {
     // inputGenePhenotype = create table(gene_name, phenotype_name, index(gene_name, phenotype_name))
     static def genePhenotypeToDrugRecommendation(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
-        if (kwargs.drugRecommendation == null) { kwargs.drugRecommendation = 'job_drug_recommendation' }
-        if (kwargs.genePhenotype == null) { kwargs.genePhenotype = 'job_gene_phenotype' }
         return Sql.selectWhereSetContains(
             sql,
             kwargs.genePhenotype,
@@ -68,27 +79,25 @@ public class Haplotype {
         )
     }
 
-    static def snpToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
+    static def unambiguousVariantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
-        if (kwargs.geneHaplotype == null) { kwargs.geneHaplotype = 'job_gene_haplotype' }
-        if (kwargs.variant == null) { kwargs.variant = 'job_variant' }
-        return Sql.selectWhereSetContains(
+        return Sql.selectWhereSetContains2(
             sql,
             kwargs.variant,
             'gene_haplotype_variant',
-            ['snp_id', 'allele'],
-            ['gene_name', 'haplotype_name'],
-            kwargs.geneHaplotype,
-            saveAs:kwargs.saveAs, 
-            sqlParams:kwargs.sqlParams,
-			singlesetWhere:"${kwargs.variant}.job_id = :job_id",
+			['snp_id', 'allele'],
+            tableAGroupBy: ['patient_id', 'physical_chromosome'],
+            tableBGroupBy: ['gene_name', 'haplotype_name'],
+			select: [':job_id', 'patient_id', 'gene_name', 'haplotype_name'],
+            intoTable: kwargs.geneHaplotype,
+            saveAs: kwargs.saveAs, 
+            sqlParams: kwargs.sqlParams,
+			tableAWhere: { t -> "${t}.job_id = :job_id" },
         )
     }
 
     static def genotypeToDrugRecommendation(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
-        if (kwargs.drugRecommendation == null) { kwargs.drugRecommendation = 'job_drug_recommendation' }
-        if (kwargs.genotype == null) { kwargs.genotype = 'job_genotype' }
         return Sql.selectWhereSetContains(
             sql,
             kwargs.genotype,
@@ -106,8 +115,6 @@ public class Haplotype {
 	// inputGenePhenotype = create table(gene_name, phenotype_name, index(gene_name, phenotype_name))
 	static def genotypeToGenePhenotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
-        if (kwargs.genePhenotype == null) { kwargs.genePhenotype = 'job_gene_phenotype' }
-        if (kwargs.genotype == null) { kwargs.genotype = 'job_genotype' }
 		return Sql.selectAs(sql, """\
 			select :job_id, gene_name, phenotype_name from ${kwargs.genotype} 
 			join genotype_phenotype using (gene_name, haplotype_name1, haplotype_name2)
@@ -128,23 +135,26 @@ public class Haplotype {
 	// - delete existing rows in a table before creating rows
 	// - optimization: figure out what tables are already "built" (select count(*) from $table where job_id = :job_id) and pass it to build()
 	static def drugRecommendations(Map kwargs = [:], groovy.sql.Sql sql) {
-		if (kwargs.pipelineJobTable == null) { kwargs.pipelineJobTable = 'job' }
 		if (kwargs.newPipelineJob == null) { kwargs.newPipelineJob = true }
+		if (kwargs.ambiguousVariants == null) { kwargs.ambiguousVariants = true }
 		def tableKey = { defaultTable ->
 			defaultTable.replaceFirst(/^job_/,  "")
 						.replaceAll(/_(\w)/, { it[0][1].toUpperCase() })
 		}
-		def tbl = [
-			'job_drug_recommendation',
-			'job_gene_haplotype',
-			'job_gene_phenotype',
-			'job_genotype',
-			'job_variant',
-		].inject([:]) { m, defaultTable ->
-			m[tableKey(defaultTable)] = defaultTable
-			m
+        // default job_* tables
+        // dependency target -> sql table
+		def tbl = new LinkedHashMap(defaultTables)
+		tbl.remove('job')
+		if (kwargs.ambiguousVariants) {
+			tbl.variant = ambiguousVariants
+		} else {
+			tbl.variant = unambiguousVariants
 		}
-
+//		def tbl = defaultTables.keySet().grep { it != 'job' }.collect { defaultTables[it] }.inject([:]) { m, defaultTable ->
+//			m[tableKey(defaultTable)] = defaultTable
+//			m
+//		}
+		
         if (kwargs.jobId == null) {
             // Create a new job
             List sqlParamsColumns = (kwargs.sqlParams?.keySet() ?: []) as List
@@ -155,14 +165,20 @@ public class Haplotype {
                 kwargs.jobId = keys[0][0]
         } else {
             // Given an existing jobId, delete all job_* rows, then rerun the pipeline
-            if ((sql.rows("select count(*) as count from ${kwargs.pipelineJobTable}".toString()))[0]['count'] != 1) {
+            if ((sql.rows("select count(*) as count from ${kwargs.job}".toString()))[0]['count'] == 0) {
                 throw new IllegalArgumentException("No such job with job_id ${kwargs.jobId}")
             }
-            tbl.values().each { jobTable ->
+            jobTables.values().each { jobTable ->
                 sql.execute "delete from $jobTable where id = :jobId".toString(), kwargs
             }
         }
 
+        def insertDepedencyRows = { table, rows ->
+            rows.each { r ->
+                r.add(0, kwargs.jobId)
+            }
+            Sql.insert(sql, tbl[table], rows)
+        }
         def pipelineKwargs = tbl + [
             sqlParams:[
                 job_id:kwargs.jobId,
@@ -183,11 +199,25 @@ public class Haplotype {
                 geneHaplotypeToGenotype(pipelineKwargs, sql)
             }) {
                 dependencies.geneHaplotype = dependency(id: tbl.geneHaplotype, target: tbl.geneHaplotype, rule: { ->
-                    snpToGeneHaplotype(pipelineKwargs, sql)
+                    // TODO: check which variant table we depend on got built (i.e. the ambigious one, or the non-ambiguous one) and call the appropriate snpToGeneHaplotype function that handles 
+                    // those cases
+                    if (kwargs.ambiguousVariants) {
+                        ambiguousVariantToGeneHaplotype(pipelineKwargs, sql)
+                    } else {
+                        unambiguousVariantToGeneHaplotype(pipelineKwargs, sql)
+                    }
                 }) {
-                    dependencies.variant = dependency(id: tbl.variant, target: tbl.variant, rule: { ->
-                        createVariant(pipelineKwargs, sql)
-                    })
+                    if (kwargs.ambiguousVariants) {
+                        // TODO: if the input variants are of the ambiguous variety, create a dependencies.variant that handles them appropriately (i.e. with error checking / filter of ambigious cases)
+                        throw new RuntimeException("Still need to implement handling variant lists that ambiguously identify which physical chromosome they occur on")
+                        // dependencies.variant = dependency(id: tbl.variant, target: tbl.variant, rule: { ->
+                        // TODO: split rs# AG into (rs#, A), (rs#, G) rows
+                    } else {
+                        // else, create a dependencies.variant that handles them appropriately (i.e. no error checking)
+                        dependencies.variant = dependency(id: tbl.variant, target: tbl.variant, rule: { ->
+                            insertDepedencyRows('variant', kwargs.variants)
+                        })
+                    }
                 }
             }
             dependencies.genePhenotype = dependency(id: tbl.genePhenotype, target: tbl.genePhenotype, rule: { ->
@@ -201,12 +231,9 @@ public class Haplotype {
         Set<Dependency> built = []
         dependencies.keySet().each { table ->
 			def rowsKey = table + 's'
-			if (kwargs[rowsKey] != null) {
+			if (kwargs[rowsKey] != null && rowsKey != 'variants') {
 				def rows = kwargs[rowsKey]
-				rows.each { r ->
-					r.add(0, kwargs.jobId)
-				}
-				Sql.insert(sql, tbl[table], rows)
+                insertDepedencyRows(table, rows)
                 built.add(dependencies[table])
 			}
         }

@@ -56,10 +56,10 @@ public class HaplotypeTest extends DBTest {
             ],
         ]
         columnsToCheck = [
-            job_drug_recommendation : ['drug_recommendation_id'],
-            job_gene_haplotype      : ['gene_name', 'haplotype_name'],
-            job_genotype            : ['gene_name', 'haplotype_name1', 'haplotype_name2'],
-            job_gene_phenotype      : ['gene_name', 'phenotype_name'],
+            job_patient_drug_recommendation : ['drug_recommendation_id'],
+            job_patient_gene_haplotype      : ['gene_name', 'haplotype_name'],
+            job_patient_genotype            : ['gene_name', 'haplotype_name1', 'haplotype_name2'],
+            job_patient_gene_phenotype      : ['gene_name', 'phenotype_name'],
         ]
     }
 
@@ -121,20 +121,24 @@ public class HaplotypeTest extends DBTest {
 		
 		drugRecommendationsTest(
 			sampleData: sampleData,
+			ambiguousVariants: false,
 			variants: [
-				['rs1', 'A'],
-				['rs2', 'G'],
+				// TODO: i think select disinct is messing up selectWhereSetContains2 for this testcase; figure out how to work around that
+				['patient1', 'chr1A', 'rs1', 'A'],
+				['patient1', 'chr1A', 'rs2', 'G'],
+				['patient1', 'chr1B', 'rs1', 'A'],
+				['patient1', 'chr1B', 'rs2', 'G'],
 			])
-		assertJobTable('job_gene_haplotype', [
+		assertJobTable('job_patient_gene_haplotype', [
 			['g1', '*1'],
 		])
-		assertJobTable('job_genotype', [
+		assertJobTable('job_patient_genotype', [
 			['g1', '*1', '*1'],
 		])
-		assertJobTable('job_gene_phenotype', [
+		assertJobTable('job_patient_gene_phenotype', [
 			['g1', 'drug'],
 		])
-		assertJobTable('job_drug_recommendation', [
+		assertJobTable('job_patient_drug_recommendation', [
 			[1],
 		])
         /*

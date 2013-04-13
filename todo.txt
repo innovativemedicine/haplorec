@@ -108,7 +108,9 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
         - TODO: ask lars about this
         - TODO: pending me being right, add a chromosome column to job_variant, and use it as a orderBy in the call to groupedRowsToColumns (in addition 
           to haplotype_name)
+          - TODO: the input variants file doesn't tell us what snps occur on what chromosomes; filter out / record these cases
         - TODO: the granularity of a job will be a set of patients; figure out how to handle this in the pipeline
+          - TODO: use new selectWhereSetContains2 function to handle this multiset to multiset containment query.
 
 
 Questions:

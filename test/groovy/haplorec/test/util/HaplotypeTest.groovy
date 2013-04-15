@@ -56,10 +56,10 @@ public class HaplotypeTest extends DBTest {
             ],
         ]
         columnsToCheck = [
-            job_patient_drug_recommendation : ['drug_recommendation_id'],
-            job_patient_gene_haplotype      : ['gene_name', 'haplotype_name'],
-            job_patient_genotype            : ['gene_name', 'haplotype_name1', 'haplotype_name2'],
-            job_patient_gene_phenotype      : ['gene_name', 'phenotype_name'],
+            job_patient_drug_recommendation : ['job_id', 'patient_id', 'drug_recommendation_id'],
+            job_patient_gene_haplotype      : ['job_id', 'patient_id', 'gene_name', 'haplotype_name'],
+            job_patient_genotype            : ['job_id', 'patient_id', 'gene_name', 'haplotype_name1', 'haplotype_name2'],
+            job_patient_gene_phenotype      : ['job_id', 'patient_id', 'gene_name', 'phenotype_name'],
         ]
     }
 
@@ -84,8 +84,8 @@ public class HaplotypeTest extends DBTest {
         }
     }
 
-    def assertJobTable(jobTable, expectedRows) {
-		assertEquals(expectedRows, select(sql, jobTable, columnsToCheck[jobTable]))
+    def assertJobTable(Map kwargs = [:], jobTable, expectedRows) {
+		assertEquals(expectedRows.sort(), select(sql, jobTable, columnsToCheck[jobTable]).sort())
     }
 
 	void testDrugRecommendations() {
@@ -119,28 +119,79 @@ public class HaplotypeTest extends DBTest {
 //            [1],
 //        ])
 		
+        /* A job with a single patient with snps resolve to a *1/*1 genotype, a homozygote normal 
+         * phenotype, and a 'drug' recommendation
+         */
 		drugRecommendationsTest(
 			sampleData: sampleData,
 			ambiguousVariants: false,
 			variants: [
-				// TODO: i think select disinct is messing up selectWhereSetContains2 for this testcase; figure out how to work around that
+				// TODO: i think select disinct is messing up selectWhereSetContains for this testcase; figure out how to work around that
 				['patient1', 'chr1A', 'rs1', 'A'],
 				['patient1', 'chr1A', 'rs2', 'G'],
 				['patient1', 'chr1B', 'rs1', 'A'],
 				['patient1', 'chr1B', 'rs2', 'G'],
 			])
 		assertJobTable('job_patient_gene_haplotype', [
-			['g1', '*1'],
+			[1, 'patient1', 'g1', '*1'],
+			[1, 'patient1', 'g1', '*1'],
 		])
 		assertJobTable('job_patient_genotype', [
-			['g1', '*1', '*1'],
+			[1, 'patient1', 'g1', '*1', '*1'],
 		])
 		assertJobTable('job_patient_gene_phenotype', [
-			['g1', 'drug'],
+			[1, 'patient1', 'g1', 'homozygote normal'],
 		])
 		assertJobTable('job_patient_drug_recommendation', [
-			[1],
+			[1, 'patient1', 1],
 		])
+
+        /* A second job that's the same as before; here we're testing to make sure multiple jobs are 
+         * independent (the results of the first job are still present)
+         */
+        drugRecommendationsTest(
+			ambiguousVariants: false,
+			variants: [
+				// TODO: i think select disinct is messing up selectWhereSetContains for this testcase; figure out how to work around that
+				['patient2', 'chr1A', 'rs1', 'A'],
+				['patient2', 'chr1A', 'rs2', 'G'],
+				['patient2', 'chr1B', 'rs1', 'A'],
+				['patient2', 'chr1B', 'rs2', 'G'],
+							// TODO: i think select disinct is messing up selectWhereSetContains for this testcase; figure out how to work around that
+				['patient1', 'chr1A', 'rs1', 'A'],
+				['patient1', 'chr1A', 'rs2', 'G'],
+				['patient1', 'chr1B', 'rs1', 'A'],
+				['patient1', 'chr1B', 'rs2', 'G'],
+			])
+		assertJobTable('job_patient_gene_haplotype', [
+			[2, 'patient2', 'g1', '*1'],
+			[2, 'patient2', 'g1', '*1'],
+            [2, 'patient1', 'g1', '*1'],
+			[2, 'patient1', 'g1', '*1'],
+            // from last test's job 1
+            [1, 'patient1', 'g1', '*1'],
+			[1, 'patient1', 'g1', '*1'],
+		])
+		assertJobTable('job_patient_genotype', [
+			[2, 'patient2', 'g1', '*1', '*1'],
+            [2, 'patient1', 'g1', '*1', '*1'],
+            // from last test's job 1
+            [1, 'patient1', 'g1', '*1', '*1'],
+		])
+		assertJobTable('job_patient_gene_phenotype', [
+			[2, 'patient2', 'g1', 'homozygote normal'],
+			[2, 'patient1', 'g1', 'homozygote normal'],
+            // from last test's job 1
+			[1, 'patient1', 'g1', 'homozygote normal'],
+		])
+		assertJobTable('job_patient_drug_recommendation', [
+			[2, 'patient2', 1],
+			[2, 'patient1', 1],
+            // from last test's job 1
+			[1, 'patient1', 1],
+		])
+
+
         /*
         // heterozygote
 		drugRecommendationsTest(

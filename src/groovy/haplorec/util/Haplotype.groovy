@@ -29,13 +29,6 @@ public class Haplotype {
         }
     }
 
-    // static def snpsToHaplotypes(String url, String username, String password, String driver = "com.mysql.jdbc.Driver") {
-    //     return snpsToHaplotypes(Sql.newInstance(url, username, password, driver))
-    // }
-
-    // TODO: geneHaplotypeToGenotype: { (GeneName, HaplotypeName) } -> { (GeneName, HaplotypeName, HaplotypeName) }
-    // where error if # of HaplotypeName for a GeneName >= 3, (null, HaplotypeName) if # == 1, else (HaplotypeName, HaplotypeName)
-
 	/* Keyword Arguments:
 	 * 
 	 * tooManyHaplotypes: a Closure of type ( GeneName: String, [HaplotypeName: String] -> void )
@@ -48,15 +41,22 @@ public class Haplotype {
         setDefaultKwargs(kwargs)
 		// groupedRowsToColumns(sql, kwargs.geneHaplotype, kwargs.genotype)
 		// fill job_genotype using job_gene_haplotype, by mapping groups of 2 haplotypes (i.e. biallelic genes) to single job_genotype rows
+        def groupBy = ['job_id', 'patient_id', 'gene_name']
 		Sql.groupedRowsToColumns(sql, kwargs.geneHaplotype, kwargs.genotype,
-			'gene_name', 
-			['gene_name':'gene_name', 'haplotype_name':['haplotype_name1', 'haplotype_name2']],
+			groupBy, 
+			['job_id':'job_id', 'patient_id':'patient_id', 'gene_name':'gene_name', 'haplotype_name':['haplotype_name1', 'haplotype_name2']],
 			orderRowsBy: ['haplotype_name'],
 			badGroup: (kwargs.tooManyHaplotypes == null) ? null : { group ->
-				def gene = group[0]['gene_name']
-				assert group.collect { row -> row['gene_name'] }.unique().size() == 1 : "all haplotypes belong to the same gene"
-				def haplotypes = group.collect { row -> row['haplotype_name'] }
-				kwargs.tooManyHaplotypes(gene, haplotypes)
+                def collectColumn = { column ->
+                    def value = group[0][column]
+                    assert group.collect { row -> row[column] }.unique().size() == 1 : "all haplotypes belong to the same $column"
+                    return value
+                }
+                def values = values.collect { collectColumn(it) }
+                def haplotypes = group.collect { row -> row['haplotype_name'] }
+
+
+				kwargs.tooManyHaplotypes(values, haplotypes)
 			},
 			sqlParams:kwargs.sqlParams,
 			rowTableWhere:"${kwargs.geneHaplotype}.job_id = :job_id",
@@ -71,29 +71,38 @@ public class Haplotype {
             kwargs.genePhenotype,
             'gene_phenotype_drug_recommendation',
             ['gene_name', 'phenotype_name'],
-            ['drug_recommendation_id'],
-            kwargs.drugRecommendation,
+            tableAGroupBy: ['job_id', 'patient_id'],
+            tableBGroupBy: ['drug_recommendation_id'],
+            select: ['job_id', 'patient_id', 'drug_recommendation_id'],
+            intoTable: kwargs.drugRecommendation,
             saveAs:kwargs.saveAs, 
             sqlParams:kwargs.sqlParams,
-			singlesetWhere:"${kwargs.genePhenotype}.job_id = :job_id",
+            tableAWhere: { t -> "${t}.job_id = :job_id" },
         )
     }
 
     static def unambiguousVariantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
-        return Sql.selectWhereSetContains2(
+        def setContainsQuery = Sql.selectWhereSetContains(
             sql,
             kwargs.variant,
             'gene_haplotype_variant',
 			['snp_id', 'allele'],
-            tableAGroupBy: ['patient_id', 'physical_chromosome'],
+            tableAGroupBy: ['job_id', 'patient_id', 'physical_chromosome'],
             tableBGroupBy: ['gene_name', 'haplotype_name'],
-			select: [':job_id', 'patient_id', 'gene_name', 'haplotype_name'],
-            intoTable: kwargs.geneHaplotype,
-            saveAs: kwargs.saveAs, 
+			select: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name', 'haplotype_name'],
+            saveAs: 'query', 
             sqlParams: kwargs.sqlParams,
 			tableAWhere: { t -> "${t}.job_id = :job_id" },
         )
+        Sql.selectAs(sql, """\
+            select job_id, patient_id, gene_name, haplotype_name from (
+                $setContainsQuery
+            ) s
+            """, [],
+			intoTable: kwargs.geneHaplotype,
+			sqlParams: kwargs.sqlParams,
+            saveAs: 'existing')
     }
 
     static def genotypeToDrugRecommendation(Map kwargs = [:], groovy.sql.Sql sql) {
@@ -103,11 +112,13 @@ public class Haplotype {
             kwargs.genotype,
             'genotype_drug_recommendation',
             ['gene_name', 'haplotype_name1', 'haplotype_name2'],
-            ['drug_recommendation_id'],
-            kwargs.drugRecommendation,
+            tableAGroupBy: ['job_id', 'patient_id'],
+            tableBGroupBy: ['drug_recommendation_id'],
+            select: ['job_id', 'patient_id', 'drug_recommendation_id'],
+            intoTable: kwargs.drugRecommendation,
             saveAs:kwargs.saveAs, 
             sqlParams:kwargs.sqlParams,
-			singlesetWhere:"${kwargs.genotype}.job_id = :job_id",
+			tableAWhere: { t -> "${t}.job_id = :job_id" },
         )
     }
 
@@ -116,10 +127,10 @@ public class Haplotype {
 	static def genotypeToGenePhenotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
 		return Sql.selectAs(sql, """\
-			select :job_id, gene_name, phenotype_name from ${kwargs.genotype} 
+			select job_id, patient_id, gene_name, phenotype_name from ${kwargs.genotype} 
 			join genotype_phenotype using (gene_name, haplotype_name1, haplotype_name2)
 			where ${kwargs.genotype}.job_id = :job_id""".toString(),
-			['job_id', 'gene_name', 'phenotype_name'],
+			['job_id', 'patient_id', 'gene_name', 'phenotype_name'],
 			saveAs:kwargs.saveAs,
 			intoTable:kwargs.genePhenotype,
             sqlParams:kwargs.sqlParams,

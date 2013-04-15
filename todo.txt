@@ -111,6 +111,7 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
           - TODO: the input variants file doesn't tell us what snps occur on what chromosomes; filter out / record these cases
         - TODO: the granularity of a job will be a set of patients; figure out how to handle this in the pipeline
           - TODO: use new selectWhereSetContains2 function to handle this multiset to multiset containment query.
+          - TODO: convert functions using selectWhereSetContains to selectWhereSetContains2, add patient_id/job_id to columns selected/tested
 
 
 Questions:

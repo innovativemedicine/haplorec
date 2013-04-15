@@ -54,39 +54,8 @@ class Sql {
 		}
 	}
 	
-    // saveAs = (MEMORY|MyISAM|query|existing)
-    static def selectWhereSetContains(Map kwargs = [:], groovy.sql.Sql sql, singlesetTable, multisetTable, setColumns, multisetGroupColumns, intoTable) {
-        setDefaultKwargs(kwargs)
-        if (kwargs.sqlParams == null) { kwargs.sqlParams = [:] }
-		// use as List to ensure a consistent iteration ordering for proper query construction
-		def sqlParamsColumns = kwargs.sqlParams.keySet() as List
-        def setColumnsStr = setColumns.join(', ')
-        def multisetGroupColumnsStr = multisetGroupColumns.join(', ')
-		// WARNING: singlesetWhere might conflict with multisetTable columns (workaround would be to prefix singleset columns with table name)
-        def query = """\
-			select distinct ${(sqlParamsColumns.collect { ":$it" } + multisetGroupColumns.collect { "counts_table.$it" }).join(', ')} from ${multisetTable} outer_table
-			join (
-			    select ${multisetGroupColumnsStr}, count(*) as group_count
-			    from ${multisetTable} join ${singlesetTable} using (${setColumnsStr})
-				${(kwargs.singlesetWhere != null) ? "where ${kwargs.singlesetWhere}" : ''}
-			    group by ${multisetGroupColumnsStr} 
-			) counts_table
-			where 
-				${multisetGroupColumns.collect { "counts_table.$it = outer_table.$it" }.join(' and ')} 
-				and counts_table.group_count = least(
-				    (select count(*) from ${singlesetTable} ${(kwargs.singlesetWhere != null) ? "where ${kwargs.singlesetWhere}" : ''}), 
-				    (select count(*) from ${multisetTable} inner_table where ${multisetGroupColumns.collect { "inner_table.$it = outer_table.$it" }.join(' and ')})
-				)
-        """
-        return selectAs(sql, query, sqlParamsColumns + multisetGroupColumns, 
-			intoTable:intoTable, 
-			indexColumns:kwargs.indexColumns, 
-			saveAs:kwargs.saveAs,
-            sqlParams:(kwargs.sqlParams == [:]) ? null : kwargs.sqlParams)
-    }
-	
 	// saveAs = (MEMORY|MyISAM|query|existing)
-	static def selectWhereSetContains2(Map kwargs = [:], groovy.sql.Sql sql, tableA, tableB, setColumns) {
+	static def selectWhereSetContains(Map kwargs = [:], groovy.sql.Sql sql, tableA, tableB, setColumns) {
 		setDefaultKwargs(kwargs)
 		assert kwargs.tableAGroupBy != null || kwargs.tableBGroupBy != null
 		if (kwargs.tableBGroupBy == null) {
@@ -168,10 +137,8 @@ class Sql {
 			maxGroupSize = 1
 		}
 		def columnTableColumns = columnMap.values().flatten()
-		def sqlParamsColumns = kwargs.sqlParams.keySet() as List
-		def sqlParamsValues = sqlParamsColumns.collect { kwargs.sqlParams[it] }
 		def insertGroup = { sqlI, g ->
-			sqlI.withBatch("insert into ${columnTable}(${(sqlParamsColumns + columnTableColumns).join(', ')}) values (${(['?'] * (sqlParamsColumns.size() + columnTableColumns.size())).join(', ')})".toString()) { ps ->
+			sqlI.withBatch("insert into ${columnTable}(${columnTableColumns.join(', ')}) values (${(['?'] * columnTableColumns.size()).join(', ')})".toString()) { ps ->
 				if (g.size() > maxGroupSize) {
 					badGroup(g)
 				} else {
@@ -187,7 +154,7 @@ class Sql {
 						}
 						i += 1
 					}
-					ps.addBatch(sqlParamsValues + columnTableColumns.collect { values[it] })
+					ps.addBatch(columnTableColumns.collect { values[it] })
 				}
 			}
 		}
@@ -198,20 +165,23 @@ class Sql {
 		def rowQuery = "select * from ${rowTable} ${(kwargs.rowTableWhere != null) ? "where ${kwargs.rowTableWhere}" : ''} order by ${orderBy.join(', ')}".toString() 
 		def handleRow = { row ->
 			def nextRowGroup = groupBy.collect { row[it] }
+			def addRowToGroup = { -> group.add(rowCols.inject([:]) { m, c -> m[c] = row[c]; m }) }
 			if (lastRowGroup == null) {
-				lastRowGroup = nextRowGroup
-				group.add(rowCols.inject([:]) { m, c -> m[c] = row[c]; m })
+				addRowToGroup()
 			} else if (lastRowGroup == nextRowGroup) {
-				group.add(rowCols.inject([:]) { m, c -> m[c] = row[c]; m })
+				addRowToGroup()
 			} else {
-				// process a group
-				if (sqlInsert == null) {
+				// process the last group
+				if (kwargs.sqlInsert == null) {
 					groups.add(group)
 				} else {
-					insertGroup(sqlInsert, group)
-					group = []
+					insertGroup(kwargs.sqlInsert, group)
 				}
+				// start a new group
+				group = []
+				addRowToGroup()
 			}
+			lastRowGroup = nextRowGroup
 		}
 		if (kwargs.sqlParams != [:]) {
 			sql.eachRow(rowQuery, kwargs.sqlParams) { r -> handleRow(r) }

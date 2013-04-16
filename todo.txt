@@ -100,18 +100,38 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
   - generate some comprehensive test data (use madeup stuff first that is understandable)
   - then use real data
 
-- TODO: fix issue where with selectWhereSetContains where a table with duplicate variants doesn't get output correctly (select distinct on variants, then rejoin mappingings with variants)
-    - check what the input list of variants looks like (is it a multiset or just a set?)
-      - looks like (snp_id, allele, sample_id) is unique.  In reality though, a patient's genome should have 2 chromosomes, so a given snp can occur 
-        at most twice (though not on the same chromosome).  However, we need the input to clarify what snps occur on the same chromosome (otherwise we'd 
-        map to haplotypes that are in reality split across 2 chromosomes)
-        - TODO: ask lars about this
-        - TODO: pending me being right, add a chromosome column to job_variant, and use it as a orderBy in the call to groupedRowsToColumns (in addition 
-          to haplotype_name)
-          - TODO: the input variants file doesn't tell us what snps occur on what chromosomes; filter out / record these cases
-        - TODO: the granularity of a job will be a set of patients; figure out how to handle this in the pipeline
-          - TODO: use new selectWhereSetContains2 function to handle this multiset to multiset containment query.
-          - TODO: convert functions using selectWhereSetContains to selectWhereSetContains2, add patient_id/job_id to columns selected/tested
+- check what the input list of variants looks like (is it a multiset or just a set?)
+  - looks like (snp_id, allele, sample_id) is unique.  In reality though, a patient's genome should 
+    have 2 chromosomes, so a given snp can occur at most twice (though not on the same chromosome).  
+    However, we need the input to clarify what snps occur on the same chromosome (otherwise we'd map 
+    to haplotypes that are in reality split across 2 chromosomes)
+  - TODO: the input variants file doesn't tell us what snps occur on what chromosomes; handle this
+    - TODO: handle it in the dumbest way by ignoring heterozygous calls, reporting this somehow 
+    - TODO: handle it in a less dumb way (if the actual data requires it; test on real dataset 
+      before doing this); ideas:
+      - allow for at most 1 heterozygote call for a snp in a snp->gene_haplotype mapping
+      - 'explode' the input variants into 2^(n-1) (where n = # of heterozygous calls) into possible 
+        chromosomal variant calls, and only report intersecting results (determine at what stage(s) 
+        to intersect) 
+  - TODO: record 'unique' haplotypes for genes
+  - TODO: record 'closely matched' haplotypes for genes
+  - TODO: test the job_patient_drug_recommendation results found through genotype based 
+    recommendations
+  - TODO: test duplicate job_patient_drug_recommendation results found through genotype and 
+    phenotype based recommendations
+  - TODO: test using a real dataset
+    - TODO: make sure we didn't miss any requirements
+  - TODO: design a web interface 
+    - TODO: allow uploading of a (amibugous) variants file (a set of patients and their snps)
+      - TODO: error check the input (e.g. make sure there aren't any duplicates that the pipeline 
+        will silently fail with, in regards to old todo below)
+        - old todo: fix issue where with selectWhereSetContains where a table with duplicate 
+          variants doesn't get output correctly (select distinct on variants, then rejoin 
+          mappingings with variants)
+          TODO: think of an example where ambiguity happens, then figure out how to modify 
+          selectWhereSetContains query to filter out gene's where ambiguity occurs 
+          - TODO: code up solution (that doesn't modify selectWhereSetContains), as well as test 
+            case that I made up, and make more test cases to make 
 
 
 Questions:

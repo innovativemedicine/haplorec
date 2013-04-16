@@ -81,7 +81,36 @@ public class Haplotype {
         )
     }
 
-    static def unambiguousVariantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
+    /* TODO: 
+     * - create an iterator wrapper over file to process the input file into the fields we want (ASSAY_ID == snp_id, GENOTYPE_ID == allele x 1/2, SAMPLE_ID = patient_id) 
+     * - call this function with kwargs.variants = iterable over file
+     * - mark heterozygous calls as ignored, and specify the reason why they are ignored
+     */
+    static def ambiguousVariantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
+        setDefaultKwargs(kwargs)
+        variantToGeneHaplotype(kwargs, sql) { setContainsQuery -> """\
+            select job_id, patient_id, gene_name, haplotype_name from (
+                $setContainsQuery
+            ) s where
+            s.gene_name not in (
+                select gene_name
+                from ${kwargs.variant} v
+                join gene_haplotype_variant using (snp_id)
+                where 
+                    zygosity     = 'het'        and 
+                    v.job_id     = :job_id      and 
+                    v.job_id     = s.job_id     and 
+                    v.patient_id = s.patient_id
+                group by job_id, patient_id, gene_name
+                having count(distinct snp_id) > 1
+            )
+            """
+        }
+    }
+
+    /* Implement the common code for unambiguous and ambiguous variants
+     */
+    static private def variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql, Closure withSetContainsQuery) {
         setDefaultKwargs(kwargs)
         def setContainsQuery = Sql.selectWhereSetContains(
             sql,
@@ -95,14 +124,21 @@ public class Haplotype {
             sqlParams: kwargs.sqlParams,
 			tableAWhere: { t -> "${t}.job_id = :job_id" },
         )
-        Sql.selectAs(sql, """\
-            select job_id, patient_id, gene_name, haplotype_name from (
-                $setContainsQuery
-            ) s
-            """, [],
+		def query = withSetContainsQuery(setContainsQuery)
+        Sql.selectAs(sql, query, [],
 			intoTable: kwargs.geneHaplotype,
 			sqlParams: kwargs.sqlParams,
             saveAs: 'existing')
+    }
+
+    static def unambiguousVariantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
+        setDefaultKwargs(kwargs)
+        variantToGeneHaplotype(kwargs, sql) { setContainsQuery -> """\
+            select job_id, patient_id, gene_name, haplotype_name from (
+                $setContainsQuery
+            ) s
+            """
+        }
     }
 
     static def genotypeToDrugRecommendation(Map kwargs = [:], groovy.sql.Sql sql) {
@@ -220,9 +256,10 @@ public class Haplotype {
                 }) {
                     if (kwargs.ambiguousVariants) {
                         // TODO: if the input variants are of the ambiguous variety, create a dependencies.variant that handles them appropriately (i.e. with error checking / filter of ambigious cases)
-                        throw new RuntimeException("Still need to implement handling variant lists that ambiguously identify which physical chromosome they occur on")
-                        // dependencies.variant = dependency(id: tbl.variant, target: tbl.variant, rule: { ->
-                        // TODO: split rs# AG into (rs#, A), (rs#, G) rows
+                        // TODO: split rs# AG into (rs#, A, 'het'), (rs#, G, 'het') rows and stick them in kwargs.variants
+                        dependencies.variant = dependency(id: tbl.variant, target: tbl.variant, rule: { ->
+                            insertDepedencyRows('variant', kwargs.variants)
+                        })
                     } else {
                         // else, create a dependencies.variant that handles them appropriately (i.e. no error checking)
                         dependencies.variant = dependency(id: tbl.variant, target: tbl.variant, rule: { ->

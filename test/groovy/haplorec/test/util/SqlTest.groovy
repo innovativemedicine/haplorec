@@ -210,7 +210,7 @@ public class SqlTest extends DBTest {
 		}
 	}
 	
-	void testSelectWhereSetContains2() {
+	void testSelectWhereSetContains() {
 
 		selectWhereSetContainsTest(
 			// { (x, y) }

@@ -196,7 +196,10 @@ CREATE TABLE job_patient_{{table_suffix}} (
 
 -- ambiguous as to what physical_chromosome variants occur on
 {% call patient_job_table('variant') -%}
+    physical_chromosome varchar({{SQL_PHYSICAL_CHROMOSOME_LENGTH}}),
     snp_id varchar({{SQL_SNP_ID_LENGTH}}),
     allele varchar({{SQL_ALLELE_LENGTH}}),
+    -- zygosity is one of 'het' (for a heterozygous call) or 'hom' (for a homozygous call)
+    zygosity char(3), 
     index (snp_id, allele),
 {%- endcall %}

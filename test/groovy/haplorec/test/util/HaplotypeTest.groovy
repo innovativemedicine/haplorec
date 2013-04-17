@@ -151,6 +151,51 @@ public class HaplotypeTest extends DBTest {
 
     }
 
+    /* Test the pipeline using a real variant input file.  This tests the following behaviours:
+     * - reading the variant file format of a well-formatted file
+     * - handling calls without any allele (TODO: are these calls that we couldn't read?)
+     * - handling heterzygous calls (without ambiguity)
+     */
+	void testDrugRecommendationsRealVariants() {
+
+        def sampleData = [
+			// TODO: add some sampleData that actually uses the variants data
+            drug_recommendation: [
+                columns:['id', 'recommendation'],
+                rows:[
+                    [1, 'drug'],
+                    [2, 'some drug'],
+                    [3, 'no drug'],
+                ],
+            ],
+            gene_phenotype_drug_recommendation: [
+                ['g1', 'homozygote normal', 1],
+                ['g1', 'heterozygote', 2],
+                ['g1', "nonfunctional", 3],
+            ],
+            gene_haplotype_variant: [
+                ['g1', '*1', 'rs1', 'A'],
+                ['g1', '*1', 'rs2', 'G'],
+                ['g1', '*2', 'rs3', 'C'],
+                ['g1', '*2', 'rs4', 'T'],
+            ],
+            genotype_phenotype: [
+                ['g1', '*1', '*1', 'homozygote normal'],
+                ['g1', '*1', '*2', 'heterozygote'],
+                ['g1', '*2', '*2', "nonfunctional"],
+            ],
+            genotype_drug_recommendation: [
+            ],
+        ]
+
+		drugRecommendationsTest(
+			sampleData: sampleData,
+			variants: "test/in/2_samples.txt")
+		
+		// TODO: assert stuff, possibly the variants table itself
+
+    }
+
 	void testDrugRecommendationsUnambiguous() {
 
         def sampleData = [

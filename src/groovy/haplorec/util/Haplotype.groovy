@@ -1,12 +1,15 @@
-package haplorec.util;
+package haplorec.util
 
+import haplorec.util.Input
 import haplorec.util.Sql
 import haplorec.util.dependency.DependencyGraphBuilder
 import haplorec.util.dependency.Dependency
+import haplorec.util.haplotype.HaplotypeInput;
 
 public class Haplotype {
     private static def ambiguousVariants = 'job_patient_variant'
     private static def unambiguousVariants = 'job_patient_chromosome_variant'
+    // table alias to SQL table name mapping
     private static def defaultTables = [
         variant            : ambiguousVariants,
         genePhenotype      : 'job_patient_gene_phenotype',
@@ -24,8 +27,8 @@ public class Haplotype {
             }
         }
         setDefault('saveAs', 'existing')
-        defaultTables.keySet().each { tblName ->
-            setDefault(tblName, defaultTables[tblName]) 
+        defaultTables.keySet().each { tableAlias ->
+            setDefault(tableAlias, defaultTables[tableAlias]) 
         }
     }
 
@@ -182,6 +185,9 @@ public class Haplotype {
 	// - delete existing rows in a table before creating rows
 	// - optimization: figure out what tables are already "built" (select count(*) from $table where job_id = :job_id) and pass it to build()
 	static def drugRecommendations(Map kwargs = [:], groovy.sql.Sql sql) {
+        if (kwargs.variants == null) {
+            throw new IllegalArgumentException("Must provide input variants")
+        }
 		if (kwargs.newPipelineJob == null) { kwargs.newPipelineJob = true }
 		if (kwargs.ambiguousVariants == null) { kwargs.ambiguousVariants = true }
 		def tableKey = { defaultTable ->
@@ -220,11 +226,21 @@ public class Haplotype {
             }
         }
 
-        def insertDepedencyRows = { table, rows ->
-            rows.each { r ->
-                r.add(0, kwargs.jobId)
+        /* Given a table alias and "raw" input (that is, in the sense that it may need to be 
+         * filtered or error checked), build a SQL table from that input by inserting it with a new 
+         * jobId.
+         */
+        def buildFromInput = { alias, rawInput ->
+            def input = pipelineInput(alias, rawInput)
+            def jobRowIter = new Object() {
+                def each(Closure f) {
+                    input.each { row ->
+                        row.add(0, kwargs.jobId)
+						f(row)
+                    }
+                }
             }
-            Sql.insert(sql, tbl[table], rows)
+            Sql.insert(sql, tbl[alias], jobRowIter)
         }
         def pipelineKwargs = tbl + [
             sqlParams:[
@@ -246,26 +262,17 @@ public class Haplotype {
                 geneHaplotypeToGenotype(pipelineKwargs, sql)
             }) {
                 dependencies.geneHaplotype = dependency(id: tbl.geneHaplotype, target: tbl.geneHaplotype, rule: { ->
-                    // TODO: check which variant table we depend on got built (i.e. the ambigious one, or the non-ambiguous one) and call the appropriate snpToGeneHaplotype function that handles 
-                    // those cases
                     if (kwargs.ambiguousVariants) {
                         ambiguousVariantToGeneHaplotype(pipelineKwargs, sql)
                     } else {
                         unambiguousVariantToGeneHaplotype(pipelineKwargs, sql)
                     }
                 }) {
-                    if (kwargs.ambiguousVariants) {
-                        // TODO: if the input variants are of the ambiguous variety, create a dependencies.variant that handles them appropriately (i.e. with error checking / filter of ambigious cases)
-                        // TODO: split rs# AG into (rs#, A, 'het'), (rs#, G, 'het') rows and stick them in kwargs.variants
-                        dependencies.variant = dependency(id: tbl.variant, target: tbl.variant, rule: { ->
-                            insertDepedencyRows('variant', kwargs.variants)
-                        })
-                    } else {
-                        // else, create a dependencies.variant that handles them appropriately (i.e. no error checking)
-                        dependencies.variant = dependency(id: tbl.variant, target: tbl.variant, rule: { ->
-                            insertDepedencyRows('variant', kwargs.variants)
-                        })
-                    }
+                    dependencies.variant = dependency(id: tbl.variant, target: tbl.variant, rule: { ->
+                        // NOTE: we don't need to specify the variants dependency rule since it can 
+                        // only come from "raw" input, and "raw" input rules are guaranteed to be 
+                        // built before we build the dependency graph.
+                    })
                 }
             }
             dependencies.genePhenotype = dependency(id: tbl.genePhenotype, target: tbl.genePhenotype, rule: { ->
@@ -278,15 +285,30 @@ public class Haplotype {
         // For datasets that are already provided, insert their rows into the approriate job_* table, and mark them as built
         Set<Dependency> built = []
         dependencies.keySet().each { table ->
-			def rowsKey = table + 's'
-			if (kwargs[rowsKey] != null && rowsKey != 'variants') {
-				def rows = kwargs[rowsKey]
-                insertDepedencyRows(table, rows)
+			def inputKey = table + 's'
+			if (kwargs[inputKey] != null) {
+				def input = kwargs[inputKey]
+                buildFromInput(table, input)
                 built.add(dependencies[table])
 			}
         }
 
         dependencies.drugRecommendation.build(built)
 	}
-	
+
+
+    /* Return an iterator over the pipeline input
+     */
+    private static def pipelineInput(tableAlias, input) {
+        if (input instanceof Collection) {
+            return input
+        } else if (input instanceof CharSequence) {
+            // input is a filename
+            def tableReader = HaplotypeInput.tableAliasToTableReader(tableAlias)
+            return tableReader(input)
+        } else {
+            throw new IllegalArgumentException("Invalid input for table ${tableAlias}; expected a list of rows or a filepath but saw ${input}")
+        }
+    }
+    
 }

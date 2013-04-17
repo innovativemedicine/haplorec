@@ -228,11 +228,31 @@ class Sql {
     }
 	
 	static def insert(groovy.sql.Sql sql, table, columns, rows) {
-		if (rows != null && rows.size() > 0) {
-			sql.withBatch("insert into ${table}${(columns.size() > 0) ? "(${columns.join(', ')})" : ''} values (${(['?'] * rows[0].size()).join(', ')})".toString()) { ps ->
-				rows.each { r -> ps.addBatch(r) }
-			}
-		}
+        if (rows == null) {
+            return
+        }
+        int rowSize
+        if (rows instanceof List) {
+            if (rows.size() == 0) {
+                return
+            }
+            rowSize = rows[0].size()
+        } else {
+            rowSize = columns.size()
+        }
+
+        def qmarks = { n -> (['?'] * n).join(', ') }
+        if (rowSize != 0) {
+            sql.withBatch("insert into ${table}${(columns.size() > 0) ? "(${columns.join(', ')})" : ''} values (${qmarks(rowSize)})".toString()) { ps ->
+                rows.each { r -> 
+                    ps.addBatch(r) 
+                }
+            }
+        } else {
+            rows.each { r ->
+                sql.execute("insert into ${table}() values (${qmarks(r.size())})", r)
+            }
+        }
 	}
 	
 	static def insert(groovy.sql.Sql sql, table, rows) {

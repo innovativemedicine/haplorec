@@ -57,8 +57,6 @@ public class Haplotype {
                 }
                 def values = values.collect { collectColumn(it) }
                 def haplotypes = group.collect { row -> row['haplotype_name'] }
-
-
 				kwargs.tooManyHaplotypes(values, haplotypes)
 			},
 			sqlParams:kwargs.sqlParams,

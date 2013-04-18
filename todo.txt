@@ -117,8 +117,6 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
   - TODO: record 'closely matched' haplotypes for genes
   - TODO: test the job_patient_drug_recommendation results found through genotype based 
     recommendations
-  - TODO: test duplicate job_patient_drug_recommendation results found through genotype and 
-    phenotype based recommendations
   - TODO: test using a real dataset
     - TODO: make sure we didn't miss any requirements
   - TODO: design a web interface 
@@ -132,6 +130,5 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
           selectWhereSetContains query to filter out gene's where ambiguity occurs 
           - TODO: code up solution (that doesn't modify selectWhereSetContains), as well as test 
             case that I made up, and make more test cases to make 
-
 
 Questions:

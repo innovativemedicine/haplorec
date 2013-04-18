@@ -40,12 +40,10 @@ public class HaplotypeTest extends DBTest {
     }
 
 	def drugRecommendationsTest(Map kwargs = [:]) {
-        def sampleData = kwargs.remove('sampleData')
-        insertSampleData(kwargs, sampleData)
 		Haplotype.drugRecommendations(kwargs, sql)
 	}
 
-    def insertSampleData(Map kwargs = [:], sampleData) {
+    def insertSampleData(sampleData) {
         sampleData.each { kv ->
             def (table, data) = [kv.key, kv.value]
             if (data instanceof java.util.List) {
@@ -99,6 +97,7 @@ public class HaplotypeTest extends DBTest {
             genotype_drug_recommendation: [
             ],
         ]
+        insertSampleData(sampleData)
 		
         /* Tests: 
          *
@@ -111,7 +110,6 @@ public class HaplotypeTest extends DBTest {
          * umambiguous association of variations on physical chromosomes).
          */
         drugRecommendationsTest(
-            sampleData: sampleData,
 			variants: [
                 ['patient1', 'chr1A', 'rs1', 'A', 'hom'],
                 ['patient1', 'chr1B', 'rs1', 'A', 'hom'],
@@ -153,13 +151,16 @@ public class HaplotypeTest extends DBTest {
 
     /* Test the pipeline using a real variant input file.  This tests the following behaviours:
      * - reading the variant file format of a well-formatted file
+     * TODO:
      * - handling calls without any allele (TODO: are these calls that we couldn't read?)
      * - handling heterzygous calls (without ambiguity)
      */
 	void testDrugRecommendationsRealVariants() {
 
         def sampleData = [
-			// TODO: add some sampleData that actually uses the variants data
+            /* TODO: add some sampleData that actually uses the variants data; probably best to do 
+             * this once we actually gather some real sampleData.
+             */
             drug_recommendation: [
                 columns:['id', 'recommendation'],
                 rows:[
@@ -187,9 +188,9 @@ public class HaplotypeTest extends DBTest {
             genotype_drug_recommendation: [
             ],
         ]
+        insertSampleData(sampleData)
 
 		drugRecommendationsTest(
-			sampleData: sampleData,
 			variants: "test/in/2_samples.txt")
 		
 		// TODO: assert stuff, possibly the variants table itself
@@ -226,12 +227,12 @@ public class HaplotypeTest extends DBTest {
             genotype_drug_recommendation: [
             ],
         ]
+        insertSampleData(sampleData)
 		
         /* A job with a single patient with snps resolve to a *1/*1 genotype, a homozygote normal 
          * phenotype, and a 'drug' recommendation
          */
 		drugRecommendationsTest(
-			sampleData: sampleData,
 			ambiguousVariants: false,
 			variants: [
 				// TODO: i think select disinct is messing up selectWhereSetContains for this testcase; figure out how to work around that
@@ -300,5 +301,66 @@ public class HaplotypeTest extends DBTest {
 		])
 
 	}
+
+	void testDrugRecommendationsDuplicateDrugRecommendations() {
+
+        def sampleData = [
+            drug_recommendation: [
+                columns:['id', 'recommendation'],
+                rows:[
+                    [1, 'drug'],
+                    [2, 'some drug'],
+                    [3, 'no drug'],
+                ],
+            ],
+            gene_phenotype_drug_recommendation: [
+                ['g1', 'homozygote normal', 1],
+                ['g1', 'heterozygote', 2],
+                ['g1', "nonfunctional", 3],
+            ],
+            gene_haplotype_variant: [
+                ['g1', '*1', 'rs1', 'A'],
+            ],
+            genotype_phenotype: [
+                ['g1', '*1', '*1', 'homozygote normal'],
+                ['g1', '*1', '*2', 'heterozygote'],
+                ['g1', '*2', '*2', "nonfunctional"],
+            ],
+            genotype_drug_recommendation: [
+                ['g1', '*1', '*1', 1],
+            ],
+        ]
+        insertSampleData(sampleData)
+
+        /* - TODO: test duplicate job_patient_drug_recommendation results found through genotype and 
+         * phenotype based recommendations (implement this as a union of the two stages; may want to 
+         * consider adding an indication of whether drug_recommendations are from phenotype or 
+         * genotype)
+         */
+        drugRecommendationsTest(
+            ambiguousVariants: false,
+            variants: [
+                ['patient1', 'chr1A', 'rs1', 'A'],
+                ['patient1', 'chr1B', 'rs1', 'A'],
+            ])
+        assertJobTable('job_patient_gene_haplotype', [
+            [1, 'patient1', 'g1', '*1'],
+            [1, 'patient1', 'g1', '*1'],
+        ])
+        assertJobTable('job_patient_genotype', [
+            [1, 'patient1', 'g1', '*1', '*1'],
+        ])
+        assertJobTable('job_patient_gene_phenotype', [
+            [1, 'patient1', 'g1', 'homozygote normal'],
+        ])
+        assertJobTable('job_patient_drug_recommendation', [
+            /* This mapping will be found twice; once from job_patient_genotype (through 
+             * genotype_drug_recommendation) and once from job_patient_gene_phenotype (through 
+             * gene_phenotype_drug_recommendation).  However, we only want it stored once.
+             */
+            [1, 'patient1', 1],
+        ])
+
+    }
 
 }

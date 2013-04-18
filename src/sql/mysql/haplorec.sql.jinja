@@ -166,6 +166,7 @@ CREATE TABLE job_patient_{{table_suffix}} (
 
 {% call patient_job_table('drug_recommendation') -%}
     drug_recommendation_id bigint,
+    primary key (job_id, patient_id, drug_recommendation_id),
 {%- endcall %}
 
 {% call patient_job_table('gene_haplotype') -%}

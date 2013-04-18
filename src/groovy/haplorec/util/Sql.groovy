@@ -4,7 +4,7 @@ import java.util.Map;
 
 class Sql {
 	private static def DEFAULT_ENGINE_SAVE_AS = 'MyISAM'
-    
+
 	/*
 	 * Keyword Arguments:
 	 * 
@@ -25,6 +25,9 @@ class Sql {
 	 */
 	static def createTableFromExisting(Map kwargs = [:], groovy.sql.Sql sql, newTable) {
         setDefaultKwargs(kwargs)
+        if (kwargs.onDuplicateKey == 'discard' && kwargs.columns == null) {
+            throw new IllegalArgumentException("must provide a columns argument when onDuplicateKey == 'discard'")
+        }
 		if (!engines.any { kwargs.saveAs == it }) {
 			throw new IllegalArgumentException("saveAs must be a valid MySQL engine type")
 		}
@@ -32,15 +35,15 @@ class Sql {
 		if (kwargs.query == null && !(kwargs.columns != null && kwargs.existingTable != null)) {
 			throw new IllegalArgumentException("must provide one of 'query' or ('columns' and 'existingTable') in keyword arguments")
 		}
-		def q = (kwargs.query != null) ?
+		def query = (kwargs.query != null) ?
 			kwargs.query :
 			"select ${kwargs.columns.join(', ')} from ${kwargs.existingTable}".toString()
 		// create the temporary table using the right datatypes
-        def createTableStmt = "create ${(kwargs.temporary) ? 'temporary' : ''} table $newTable as ($q) ${(kwargs.dontRunQuery) ? 'limit 0' : ''}".toString()
-        if (kwargs.sqlParams != null) {
-            sql.executeUpdate createTableStmt, kwargs.sqlParams
-        } else {
-            sql.executeUpdate createTableStmt
+        _sql kwargs, sql.&executeUpdate, "create ${(kwargs.temporary) ? 'temporary' : ''} table $newTable as ($query) limit 0"
+        if (!kwargs.dontRunQuery) {
+            // insert our query
+            def qInsertInto = insertIntoSql(kwargs, newTable, query)
+            _sql kwargs, sql.&executeUpdate, qInsertInto
         }
 		// create the temporary table using the right datatypes
 		sql.executeUpdate "alter table $newTable engine = ${kwargs.saveAs}".toString()
@@ -111,10 +114,11 @@ class Sql {
 				    (${tableCount(tableB, kwargs.tableBWhere, kwargs.tableBGroupBy)})
 				)
         """
-		return selectAs(sql, query, [],
+		return selectAs(sql, query, kwargs.select,
 			intoTable:kwargs.intoTable,
 			indexColumns:kwargs.indexColumns,
 			saveAs:kwargs.saveAs,
+			onDuplicateKey:kwargs.onDuplicateKey,
 			sqlParams:kwargs.sqlParams)
 	}
 
@@ -195,8 +199,54 @@ class Sql {
 			insertGroup(sql, g)
 		}
 	}
+
+    private static def _sql(Map kwargs = [:], sqlMethod, String stmt) {
+        if (kwargs.sqlParams != null) {
+            sqlMethod stmt, kwargs.sqlParams
+        } else {
+            sqlMethod stmt
+        }
+    }
+
+    private static def _(Map kwargs = [:], value) {
+        if (kwargs.default == null) { kwargs.default = '' }
+        if (!kwargs.containsKey('null')) { kwargs.null = null }
+        if (kwargs.default == null) { kwargs.default = '' }
+        if (kwargs.return == null) { kwargs.return = { x -> x } }
+        if (kwargs.ret == null) { 
+            kwargs.ret = { x ->
+                if (x != kwargs.null) {
+                    kwargs.return(x)
+                } else {
+                    kwargs.default
+                }
+            }
+        }
+        kwargs.ret(value)
+    }
 	
-	// TODO: add parameter for adding indexColumns instead of just depending on indexing columns all the time
+	private static String insertIntoSql(Map kwargs = [:], intoTable, query) {
+		if (kwargs.onDuplicateKey == null) {
+            return """\
+               |insert into $intoTable (${_(kwargs.columns, return: { it.join(', ') })}) 
+               |$query""".stripMargin()
+        } else {
+            def update
+            if (kwargs.onDuplicateKey == 'discard') { 
+                // This ignores the insert, keeping an existing row.
+                // http://stackoverflow.com/questions/2366813/on-duplicate-key-ignore
+                update = "$intoTable.${kwargs.columns[0]} = $intoTable.${kwargs.columns[0]}" 
+            } else {
+                assert kwargs.onDuplicateKey instanceof Closure : "onDuplicateKey argument is a closure taking old and new table aliases for $intoTable"
+                update = kwargs.onDuplicateKey('old', intoTable)
+            }
+            return """\
+               |insert into $intoTable (${_(kwargs.columns, return: { it.join(', ') })}) 
+               |    (select * from ($query) old)
+               |on duplicate key update $update""".stripMargin()
+		}
+	}
+	
     private static def engines = ['MEMORY', 'MyISAM']
     private static def validSaveAs = engines + ['query', 'existing']
     private static def selectAs(Map kwargs = [:], groovy.sql.Sql sql, query, columns) {
@@ -206,22 +256,13 @@ class Sql {
 				saveAs:kwargs.saveAs, 
 				query:query, 
 				indexColumns:kwargs.indexColumns,
+                onDuplicateKey:kwargs.onDuplicateKey,
 				sqlParams:kwargs.sqlParams)
-			// TODO: figure out why i decided not run the query in the create table prior...
-//            def qInsertInto = query('INTO ${kwargs.intoTable}')
-//            sql.executeUpdate qInsertInto
         } else if (kwargs.saveAs == 'query') {
             return query
         } else if (kwargs.saveAs == 'existing') {
-			def qInsertInto = """\
-				insert into ${kwargs.intoTable} (${columns.join(', ')})
-				$query""".toString()
-//            def qInsertInto = query("INTO ${kwargs.intoTable}").toString()
-            if (kwargs.sqlParams != null) {
-                sql.execute qInsertInto, kwargs.sqlParams
-            } else {
-                sql.execute qInsertInto
-            }
+            def qInsertInto = insertIntoSql(kwargs + [columns:columns], kwargs.intoTable, query)
+            _sql kwargs, sql.&execute, qInsertInto
         } else {
             throw new IllegalArgumentException("Unknown saveAs type for outputting SQL results; saveAs was ${kwargs.saveAs} but must be one of " + validSaveAs.join(', '))
         }

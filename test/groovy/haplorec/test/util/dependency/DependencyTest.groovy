@@ -80,5 +80,70 @@ class DependencyTest extends GroovyTestCase {
 		].collect { it as Set })
 		
     }
+	
+	void testLowerThenHigherLevelVisit() {
+		/* Makes sure nodes that get visited at a lower level first, then a higher level retain the lower level.  In particular, B gets visited first from A (level 0), and then from C (level 1), so we expect B as level 1. 
+		 */
+        def builder = new DependencyGraphBuilder()
+		def _ = { -> }
+		def dep = { name -> [id:name, target:name, rule:_] }
+		Dependency A, B, C, D, E, F
+		A = builder.dependency(dep('A')) {
+            B = dependency(dep('B')) {
+                D = dependency(dep('D')) {
+                }
+                E = dependency(dep('E')) {
+                }
+            }
+            C = dependency(dep('C')) {
+                B = dependency(refId: 'B')
+                F = dependency(dep('F')) {
+                }
+            }
+        }
+        def lvls = A.levels()
+        assert A.dependsOn == [B, C] && C.dependsOn == [B, F]: "traversal order to reach B is as expected in test behaviour"
+        assert lvls == [
+            (A): 0,
+            (B): 1,
+            (C): 1,
+            (D): 2,
+            (E): 2,
+            (F): 2,
+        ]
+	}
+
+
+	void testHigherThenLowerLevelVisit() {
+		/* Makes sure nodes that get visited at a higher level first, then a lower level retain the higher level.  In particular, B gets visited first from C (level 1), and then from A (level 0), so we expect B as level 1. 
+		 */
+        def builder = new DependencyGraphBuilder()
+		def _ = { -> }
+		def dep = { name -> [id:name, target:name, rule:_] }
+		Dependency A, B, C, D, E, F
+		A = builder.dependency(dep('A')) {
+            C = dependency(dep('C')) {
+                B = dependency(dep('B')) {
+                    D = dependency(dep('D')) {
+                    }
+                    E = dependency(dep('E')) {
+                    }
+                }
+                F = dependency(dep('F')) {
+                }
+            }
+            B = dependency(refId: 'B')
+        }
+        def lvls = A.levels()
+        assert A.dependsOn == [C, B] && C.dependsOn == [B, F]: "traversal order to reach B is as expected in test behaviour"
+        assert lvls == [
+            (A): 0,
+            (B): 1,
+            (C): 1,
+            (D): 2,
+            (E): 2,
+            (F): 2,
+        ]
+	}
 
 }

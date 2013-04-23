@@ -14,24 +14,6 @@ class Dependency {
 	def finished
 	List<Dependency> dependsOn = []
 	
-	/*
-def dep_resolve(node, resolved, seen):
-   print node.name
-   seen.append(node)
-   for edge in node.edges:
-          if edge not in resolved:
-                 if edge in seen:
-                        raise Exception('Circular reference detected: %s -&gt; %s' % (node.name, edge.name))
-                 dep_resolve(edge, resolved, seen)
-   resolved.append(node)
-	 */
-//	void build() {
-		/* TODO:
-		 * implement http://www.electricmonk.nl/docs/dependency_resolving_algorithm/dependency_resolving_algorithm.html#_representing_the_data_graphs
-		 */
-//		build(this, new HashSet<Dependency>(), new HashSet<Dependency>())
-//	}
-	
 	void build(Set<Dependency> built = new HashSet<Dependency>()) {
 		/* TODO:
 		 * implement http://www.electricmonk.nl/docs/dependency_resolving_algorithm/dependency_resolving_algorithm.html#_representing_the_data_graphs
@@ -56,8 +38,30 @@ def dep_resolve(node, resolved, seen):
 	
 	@Override
 	public String toString() {
-		return (dependsOn.size() == 0) ?
-			target :
-			"$target <- $dependsOn"
+        return target
+		// return (dependsOn.size() == 0) ?
+		// 	target :
+		// 	"$target <- $dependsOn"
+	}
+	
+	private static lvls(Integer l, Dependency d, Map<Dependency, Integer> lvl) {
+		if (!lvl.containsKey(d)) {
+			lvl[d] = l
+		} else if (l < lvl[d]) {
+			lvl[d] = l 
+		}
+		d.dependsOn.each { dependency ->
+			if (!lvl.containsKey(dependency) || l + 1 < lvl[dependency]) {
+				// if we haven't visited or its smaller
+				lvls(l + 1, dependency, lvl)
+			}
+		}
+	}
+	
+	Map<Dependency, Integer> levels(Map kwargs = [:]) {
+		if (kwargs.start == null) { kwargs.start = 0 }
+		def lvl = new HashMap()
+		lvls(kwargs.start, this, lvl)
+		return lvl
 	}
 }

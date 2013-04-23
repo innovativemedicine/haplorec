@@ -5,6 +5,7 @@ import haplorec.util.Sql
 import haplorec.util.dependency.DependencyGraphBuilder
 import haplorec.util.dependency.Dependency
 import haplorec.util.haplotype.HaplotypeInput;
+import haplorec.util.haplotype.HaplotypeDependencyGraphBuilder
 
 public class Haplotype {
     private static def ambiguousVariants = 'job_patient_variant'
@@ -180,6 +181,33 @@ public class Haplotype {
 		setDefaultKwargs(kwargs)
 		Sql.insert(sql, kwargs.variant, ['snp_id', 'allele'], kwargs.variants)
 	}
+
+    static def haplotypeDepedencyGraph() {
+        def builder = new HaplotypeDependencyGraphBuilder()
+        Map dependencies = [:]
+        def canUpload = { d -> HaplotypeInput.inputTables.contains(d) }
+        dependencies.drugRecommendation = builder.dependency(id: 'drugRecommendation', target: 'drugRecommendation', 
+        name: "Drug Recommendations",
+        fileUpload: canUpload('drugRecommendation')) {
+            dependencies.genotype = dependency(id: 'genotype', target: 'genotype', 
+            name: "Genotypes",
+            fileUpload: canUpload('genotype')) {
+                dependencies.geneHaplotype = dependency(id: 'geneHaplotype', target: 'geneHaplotype', 
+                name: "Haplotypes",
+                fileUpload: canUpload('geneHaplotype')) {
+                    dependencies.variant = dependency(id: 'variant', target: 'variant', 
+                    name: "Variants",
+                    fileUpload: canUpload('variant'))
+                }
+            }
+            dependencies.genePhenotype = dependency(id: 'genePhenotype', target: 'genePhenotype', 
+            name: "Phenotypes",
+            fileUpload: canUpload('genePhenotype')) {
+                dependency(refId: 'genotype')
+            }
+        }
+        return dependencies
+    }
 	
     // TODO: accept jobId to rerun parts of the pipeline 
 	// - delete existing rows in a table before creating rows
@@ -247,39 +275,35 @@ public class Haplotype {
                 job_id:kwargs.jobId,
             ]
         ]
-        def builder = new DependencyGraphBuilder()
-        Map dependencies = [:]
-        dependencies.drugRecommendation = builder.dependency(id: tbl.drugRecommendation, target: tbl.drugRecommendation, rule: { ->
+
+        Map dependencies = haplotypeDepedencyGraph()
+
+        dependencies.drugRecommendation.rule = { ->
             genotypeToDrugRecommendation(pipelineKwargs, sql)
             /* TODO: make sure this handles duplicates appropriately, either by filtering them out,
              * or by indicating whether the recommendation is from genotype or phenotype information
              */
             genePhenotypeToDrugRecommendation(pipelineKwargs + [saveAs:'existing'], sql)
-        }) {
-            dependencies.genotype = dependency(id: tbl.genotype, target: tbl.genotype, rule: { ->
-                /* TODO: specify a way of dealing with tooManyHaplotypes errors
-                 */
-                geneHaplotypeToGenotype(pipelineKwargs, sql)
-            }) {
-                dependencies.geneHaplotype = dependency(id: tbl.geneHaplotype, target: tbl.geneHaplotype, rule: { ->
-                    if (kwargs.ambiguousVariants) {
-                        ambiguousVariantToGeneHaplotype(pipelineKwargs, sql)
-                    } else {
-                        unambiguousVariantToGeneHaplotype(pipelineKwargs, sql)
-                    }
-                }) {
-                    dependencies.variant = dependency(id: tbl.variant, target: tbl.variant, rule: { ->
-                        // NOTE: we don't need to specify the variants dependency rule since it can 
-                        // only come from "raw" input, and "raw" input rules are guaranteed to be 
-                        // built before we build the dependency graph.
-                    })
-                }
+        }
+        dependencies.genotype.rule = { ->
+            /* TODO: specify a way of dealing with tooManyHaplotypes errors
+            */
+            geneHaplotypeToGenotype(pipelineKwargs, sql)
+        }
+        dependencies.geneHaplotype.rule = { ->
+            if (kwargs.ambiguousVariants) {
+                ambiguousVariantToGeneHaplotype(pipelineKwargs, sql)
+            } else {
+                unambiguousVariantToGeneHaplotype(pipelineKwargs, sql)
             }
-            dependencies.genePhenotype = dependency(id: tbl.genePhenotype, target: tbl.genePhenotype, rule: { ->
-                genotypeToGenePhenotype(pipelineKwargs, sql)
-            }) {
-                dependency(refId: tbl.genotype)
-            }
+        }
+        dependencies.variant.rule = { ->
+            // NOTE: we don't need to specify the variants dependency rule since it can 
+            // only come from "raw" input, and "raw" input rules are guaranteed to be 
+            // built before we build the dependency graph.
+        }
+        dependencies.genePhenotype.rule = { ->
+            genotypeToGenePhenotype(pipelineKwargs, sql)
         }
 
         // For datasets that are already provided, insert their rows into the approriate job_* table, and mark them as built
@@ -295,8 +319,7 @@ public class Haplotype {
 
         dependencies.drugRecommendation.build(built)
 	}
-
-
+	
     /* Return an iterator over the pipeline input
      */
     private static def pipelineInput(tableAlias, input) {

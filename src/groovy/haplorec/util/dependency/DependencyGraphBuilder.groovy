@@ -9,10 +9,6 @@ class DependencyGraphBuilder extends ObjectGraphBuilder {
 	public DependencyGraphBuilder() {
 		super()
 		this.classNameResolver = "haplorec.util.dependency"
-//		this.classLoader = getClass().classLoader
-//		this.identifierResolver = 'name'
-//		this.identifierResolver = 'target'.toString()
-//		this.identifierResolver = new DependencyIdentifierResolver()
 		this.childPropertySetter = new DependencyChildPropertySetter()
 		this.newInstanceResolver = { klass, attributes -> 
 			klass.newInstance(attributes) 

@@ -27,19 +27,23 @@ class Input {
 	}
 
 	/*
+    dsv(file)
     dsv(file, fields:[1,2,3])
     dsv(file, fields:['genotype_id', 'snp_id'], header:['some_other_stuff', 'genotype_id', 'snp_id'])
     dsv(file, fields:['genotype_id', 'snp_id'], fieldIndices:[genotype_id:2, snp_id:5])
     */
     static def dsv(Map kwargs = [:], fileOrStream) {
 		// Whether there's a header at the top of the file
-		if (kwargs.header == null) { kwargs.header = true }
 		if (kwargs.skipHeader == null) { kwargs.skipHeader = true }
 		if (kwargs.asList == null) { kwargs.asList = false }
 		if (kwargs.closeAfter == null) { kwargs.closeAfter = true }
+		if (kwargs.separator == null) { kwargs.separator = /\t/ }
 
         def fieldNumbers
-        if (kwargs.fields[0] instanceof Integer) {
+        if (kwargs.header == null && kwargs.fieldIndices == null && kwargs.fields == null) {
+            fieldNumbers = null
+            // skip
+        } else if (kwargs.fields[0] instanceof Integer) {
             fieldNumbers = kwargs.fields
         } else {
             def collectFieldIndices = { fieldIndices ->
@@ -69,7 +73,7 @@ class Input {
                     def _next = { ->
                         lineNo += 1
                         CharSequence l = iter.next()
-                        return l.split(/\t/)
+                        return l.split(kwargs.separator)
                     }
                     while (iter.hasNext()) {
                         def fields = _next()
@@ -81,7 +85,9 @@ class Input {
                                 fields = _next()
                             }
                         }
-                        def fs = fieldNumbers.collect { i -> fields[i - 1] }
+                        def fs = (fieldNumbers != null) ?
+                            fieldNumbers.collect { i -> fields[i - 1] } :
+                            fields
                         if (kwargs.asList) {
                             f(fs)
                         } else {

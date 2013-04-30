@@ -225,7 +225,6 @@ public class Haplotype {
         // default job_* tables
         // dependency target -> sql table
 		def tbl = new LinkedHashMap(defaultTables)
-		tbl.remove('job')
 		if (kwargs.ambiguousVariants) {
 			tbl.variant = ambiguousVariants
 		} else {
@@ -323,7 +322,20 @@ public class Haplotype {
     /* Return an iterator over the pipeline input
      */
     private static def pipelineInput(tableAlias, input) {
-        if (input instanceof Collection) {
+        // TODO: use an interface for something that implements readLine() (Reader???)
+        if (input instanceof List && input.size() > 0 && input[0] instanceof BufferedReader) {
+            return new Object() {
+                def each(Closure f) {
+                    input.each { inputStream ->
+                        Input.dsv(inputStream,
+                            asList: true,
+                        ).each { row ->
+                            f(*row)
+                        }
+                    }
+                }
+            }
+        } else if (input instanceof Collection) {
             return input
         } else if (input instanceof CharSequence) {
             // input is a filename

@@ -182,31 +182,47 @@ public class Haplotype {
 		Sql.insert(sql, kwargs.variant, ['snp_id', 'allele'], kwargs.variants)
 	}
 
-    static def haplotypeDepedencyGraph() {
+    static def dependencyGraph(Map kwargs = [:]) {
+		if (kwargs.ambiguousVariants == null) { kwargs.ambiguousVariants = true }
+
+        // default job_* tables
+        // dependency target -> sql table
+		def tbl = new LinkedHashMap(defaultTables)
+		if (kwargs.ambiguousVariants) {
+			tbl.variant = ambiguousVariants
+		} else {
+			tbl.variant = unambiguousVariants
+		}
+
         def builder = new HaplotypeDependencyGraphBuilder()
         Map dependencies = [:]
         def canUpload = { d -> HaplotypeInput.inputTables.contains(d) }
         dependencies.drugRecommendation = builder.dependency(id: 'drugRecommendation', target: 'drugRecommendation', 
         name: "Drug Recommendations",
+        table: tbl.drugRecommendation,
         fileUpload: canUpload('drugRecommendation')) {
             dependencies.genotype = dependency(id: 'genotype', target: 'genotype', 
             name: "Genotypes",
+            table: tbl.genotype,
             fileUpload: canUpload('genotype')) {
                 dependencies.geneHaplotype = dependency(id: 'geneHaplotype', target: 'geneHaplotype', 
                 name: "Haplotypes",
+                table: tbl.geneHaplotype,
                 fileUpload: canUpload('geneHaplotype')) {
                     dependencies.variant = dependency(id: 'variant', target: 'variant', 
                     name: "Variants",
+                    table: tbl.variant,
                     fileUpload: canUpload('variant'))
                 }
             }
             dependencies.genePhenotype = dependency(id: 'genePhenotype', target: 'genePhenotype', 
             name: "Phenotypes",
+            table: tbl.genePhenotype,
             fileUpload: canUpload('genePhenotype')) {
                 dependency(refId: 'genotype')
             }
         }
-        return dependencies
+        return [tbl, dependencies]
     }
 	
     // TODO: accept jobId to rerun parts of the pipeline 
@@ -222,19 +238,9 @@ public class Haplotype {
 			defaultTable.replaceFirst(/^job_/,  "")
 						.replaceAll(/_(\w)/, { it[0][1].toUpperCase() })
 		}
-        // default job_* tables
-        // dependency target -> sql table
-		def tbl = new LinkedHashMap(defaultTables)
-		if (kwargs.ambiguousVariants) {
-			tbl.variant = ambiguousVariants
-		} else {
-			tbl.variant = unambiguousVariants
-		}
-//		def tbl = defaultTables.keySet().grep { it != 'job' }.collect { defaultTables[it] }.inject([:]) { m, defaultTable ->
-//			m[tableKey(defaultTable)] = defaultTable
-//			m
-//		}
-		
+
+        def (tbl, dependencies) = dependencyGraph(kwargs)
+
         if (kwargs.jobId == null) {
             // Create a new job
             List sqlParamsColumns = (kwargs.sqlParams?.keySet() ?: []) as List
@@ -274,8 +280,6 @@ public class Haplotype {
                 job_id:kwargs.jobId,
             ]
         ]
-
-        Map dependencies = haplotypeDepedencyGraph()
 
         dependencies.drugRecommendation.rule = { ->
             genotypeToDrugRecommendation(pipelineKwargs, sql)

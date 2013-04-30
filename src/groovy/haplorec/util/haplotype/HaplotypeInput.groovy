@@ -1,5 +1,6 @@
 package haplorec.util.haplotype
 
+import groovy.lang.Closure;
 import haplorec.util.Input
 
 public class HaplotypeInput {
@@ -17,8 +18,19 @@ public class HaplotypeInput {
         if (!inputTables.contains(tableAlias)) {
             throw new IllegalArgumentException("no input reader for table ${tableAlias}; try adding it to inputTables and defining HaplotypeInput.${tableReader}")
         }
-        return HaplotypeInput.&"${tableReader}"
+		if (HaplotypeInput.metaClass.respondsTo(HaplotypeInput, tableReader)) {
+			return HaplotypeInput.&"${tableReader}"
+		} else {
+			// return a default reader
+			return HaplotypeInput.&defaultReader
+		}
     }
+	
+	static def defaultReader(Map kwargs = [:], fileOrStream) {
+		return Input.dsv(fileOrStream,
+			asList: true,
+		)
+	}
 
 	static def variants(Map kwargs = [:], fileOrStream) {
 		if (kwargs.asList == null) { kwargs.asList = true }

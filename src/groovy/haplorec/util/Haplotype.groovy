@@ -19,7 +19,7 @@ public class Haplotype {
         drugRecommendation : 'job_patient_drug_recommendation',
         job                : 'job',
     ]
-    private static Set<CharSequence> jobTables = new HashSet(defaultTables.values() + [ambiguousVariants, unambiguousVariants])
+    private static Set<CharSequence> jobTables = new HashSet(defaultTables.grep { it.key != 'job' }.collect { it.value } + [ambiguousVariants, unambiguousVariants])
 	
     private static def setDefaultKwargs(Map kwargs) {
         def setDefault = { property, defaultValue -> 
@@ -245,11 +245,11 @@ public class Haplotype {
                 kwargs.jobId = keys[0][0]
         } else {
             // Given an existing jobId, delete all job_* rows, then rerun the pipeline
-            if ((sql.rows("select count(*) as count from ${kwargs.job}".toString()))[0]['count'] == 0) {
+            if ((sql.rows("select count(*) as count from ${tbl.job}".toString()))[0]['count'] == 0) {
                 throw new IllegalArgumentException("No such job with job_id ${kwargs.jobId}")
             }
-            jobTables.values().each { jobTable ->
-                sql.execute "delete from $jobTable where id = :jobId".toString(), kwargs
+            jobTables.each { jobTable ->
+                sql.execute "delete from $jobTable where job_id = :jobId".toString(), kwargs
             }
         }
 
@@ -322,20 +322,20 @@ public class Haplotype {
     /* Return an iterator over the pipeline input
      */
     private static def pipelineInput(tableAlias, input) {
-        // TODO: use an interface for something that implements readLine() (Reader???)
         if (input instanceof List && input.size() > 0 && input[0] instanceof BufferedReader) {
+			// input is a filehandle
+			def tableReader = HaplotypeInput.tableAliasToTableReader(tableAlias)
             return new Object() {
                 def each(Closure f) {
                     input.each { inputStream ->
-                        Input.dsv(inputStream,
-                            asList: true,
-                        ).each { row ->
-                            f(*row)
+                        tableReader(inputStream).each { row ->
+                            f(row)
                         }
                     }
                 }
             }
         } else if (input instanceof Collection) {
+			// input is a list of rows of data to insert
             return input
         } else if (input instanceof CharSequence) {
             // input is a filename

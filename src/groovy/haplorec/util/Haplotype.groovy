@@ -91,8 +91,9 @@ public class Haplotype {
      */
     static def ambiguousVariantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
-        variantToGeneHaplotype(kwargs, sql) { setContainsQuery -> """\
-            select job_id, patient_id, gene_name, haplotype_name from (
+        def columns = ['job_id', 'patient_id', 'gene_name', 'haplotype_name']
+        variantToGeneHaplotype(kwargs, sql, columns) { setContainsQuery -> """\
+            select ${columns.join(', ')} from (
                 $setContainsQuery
             ) s where
             s.gene_name not in (
@@ -113,8 +114,7 @@ public class Haplotype {
 
     /* Implement the common code for unambiguous and ambiguous variants
      */
-    static private def variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql, Closure withSetContainsQuery) {
-        setDefaultKwargs(kwargs)
+    static private def variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql, insertColumns, Closure withSetContainsQuery) { setDefaultKwargs(kwargs)
         def setContainsQuery = Sql.selectWhereSetContains(
             sql,
             kwargs.variant,
@@ -128,7 +128,7 @@ public class Haplotype {
 			tableAWhere: { t -> "${t}.job_id = :job_id" },
         )
 		def query = withSetContainsQuery(setContainsQuery)
-        Sql.selectAs(sql, query, [],
+        Sql.selectAs(sql, query, insertColumns,
 			intoTable: kwargs.geneHaplotype,
 			sqlParams: kwargs.sqlParams,
             saveAs: 'existing')
@@ -136,8 +136,9 @@ public class Haplotype {
 
     static def unambiguousVariantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
-        variantToGeneHaplotype(kwargs, sql) { setContainsQuery -> """\
-            select job_id, patient_id, gene_name, haplotype_name from (
+        def columns = ['job_id',' patient_id',' gene_name', 'haplotype_name']
+        variantToGeneHaplotype(kwargs, sql, columns) { setContainsQuery -> """\
+            select ${columns.join(', ')} from (
                 $setContainsQuery
             ) s
             """
@@ -263,6 +264,13 @@ public class Haplotype {
          * filtered or error checked), build a SQL table from that input by inserting it with a new 
          * jobId.
          */
+        def jobTableInsertColumns = defaultTables.grep { it.key != 'job' }.collect { it.key }.inject([:]) { m, alias ->
+            def table = tbl[alias]
+            m[alias] = Sql.tableColumns(sql, tbl[alias],
+                where: "column_key != 'PRI'")
+			m
+        }
+        println jobTableInsertColumns
         def buildFromInput = { alias, rawInput ->
             def input = pipelineInput(alias, rawInput)
             def jobRowIter = new Object() {
@@ -273,7 +281,7 @@ public class Haplotype {
                     }
                 }
             }
-            Sql.insert(sql, tbl[alias], jobRowIter)
+            Sql.insert(sql, tbl[alias], jobTableInsertColumns[alias], jobRowIter)
         }
         def pipelineKwargs = tbl + [
             sqlParams:[

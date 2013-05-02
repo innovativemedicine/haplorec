@@ -157,16 +157,18 @@ CREATE TABLE job (
 
 {% macro patient_job_table(table_suffix) -%}
 CREATE TABLE job_patient_{{table_suffix}} (
+    id bigint not null auto_increment,
     job_id bigint not null,
     patient_id varchar({{SQL_PATIENT_ID_LENGTH}}),
     {{ caller() }}
-    foreign key (job_id) references job(id)
+    foreign key (job_id) references job(id),
+    primary key (id)
 ) {{SQL_ENGINE}};
 {%- endmacro -%}
 
 {% call patient_job_table('drug_recommendation') -%}
     drug_recommendation_id bigint,
-    primary key (job_id, patient_id, drug_recommendation_id),
+    unique (job_id, patient_id, drug_recommendation_id),
     foreign key (drug_recommendation_id) references drug_recommendation(id),
 {%- endcall %}
 

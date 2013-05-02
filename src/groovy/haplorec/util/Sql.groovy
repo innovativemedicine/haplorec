@@ -346,5 +346,22 @@ class Sql {
             }
 		}
 	}
+	
+	private static def hashRowsToListRows(rows, cols) {
+		rows.collect { r ->
+			cols.collect { r[it] }
+		}
+	}
+	
+	static def tableColumns(Map kwargs = [:], groovy.sql.Sql sql, table) {
+        kwargs.sqlParams = (kwargs.sqlParams ?: [:]) + [table: table]
+		hashRowsToListRows(_sql(kwargs, sql.&rows, """\
+			|select column_name 
+			|from information_schema.columns 
+			|where table_schema = database() and
+			|      table_name = :table
+			|	   ${_(kwargs.where, return: { "and ( $it )" })}""".stripMargin()),
+			['column_name']).collect { it[0] }
+	}
 
 }

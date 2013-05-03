@@ -230,9 +230,6 @@ public class Haplotype {
 	// - delete existing rows in a table before creating rows
 	// - optimization: figure out what tables are already "built" (select count(*) from $table where job_id = :job_id) and pass it to build()
 	static def drugRecommendations(Map kwargs = [:], groovy.sql.Sql sql) {
-        if (kwargs.variants == null) {
-            throw new IllegalArgumentException("Must provide input variants")
-        }
 		if (kwargs.newPipelineJob == null) { kwargs.newPipelineJob = true }
 		if (kwargs.ambiguousVariants == null) { kwargs.ambiguousVariants = true }
 		def tableKey = { defaultTable ->

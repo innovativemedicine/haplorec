@@ -6,6 +6,8 @@ import haplorec.util.Haplotype
 import haplorec.util.Input.InvalidInputException
 import haplorec.util.Sql
 
+import haplorec.util.haplotype.HaplotypeInput
+
 import groovy.util.GroovyTestCase
 
 public class HaplotypeTest extends DBTest {
@@ -33,6 +35,7 @@ public class HaplotypeTest extends DBTest {
             job_patient_gene_haplotype      : ['job_id', 'patient_id', 'gene_name', 'haplotype_name'],
             job_patient_genotype            : ['job_id', 'patient_id', 'gene_name', 'haplotype_name1', 'haplotype_name2'],
             job_patient_gene_phenotype      : ['job_id', 'patient_id', 'gene_name', 'phenotype_name'],
+			job_patient_variant             : ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'zygosity'],
         ]
     }
 
@@ -373,8 +376,60 @@ public class HaplotypeTest extends DBTest {
         }
         return new BufferedReader(new StringReader(buffer.toString()))
     }
+	
+	void testDrugRecommendationsInputGenotypes() {
+		
+		drugRecommendationsTest(
+			genotypes: [rowsAsStream([
+				HaplotypeInput.inputHeaders.genotype,
+				['patient1', 'g1', '*1', '*1'],
+			])])
+		assertJobTable('job_patient_genotype', [
+			[1, 'patient1', 'g1', '*1', '*1'],
+		])
+		
+	}
+	
+	void testDrugRecommendationsInputGenotypesWithoutHeader() {
+		
+		drugRecommendationsTest(
+			genotypes: [rowsAsStream([
+				// without header
+				['patient1', 'g1', '*1', '*1'],
+			])])
+		assertJobTable('job_patient_genotype', [
+			[1, 'patient1', 'g1', '*1', '*1'],
+		])
+		
+	}
+	
+	void testDrugRecommendationsInvalidInputGenotypes() {
+		def msg
+		
+		// too few columns
+		msg = shouldFail(InvalidInputException) {
+			drugRecommendationsTest(
+				genotypes: [rowsAsStream([
+					['patient1', 'g1', '*1'],
+				])])
+		}
+		assert msg =~ /Expected \d+ columns matching header/
+		
+	}
 
-    def variantsHeader = ['PLATE', 'EXPERIMENT', 'CHIP', 'WELL_POSITION', 'ASSAY_ID', 'GENOTYPE_ID', 'DESCRIPTION', 'SAMPLE_ID', 'ENTRY_OPERATOR']
+	void testDrugRecommendationsInputVariantsWithoutHeader() {
+		
+		drugRecommendationsTest(
+			variants: [rowsAsStream([
+				['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr1_117098850', 'C', 'A.Conservative', '1063-117507', 'Automatic'],
+			])])
+        assertJobTable('job_patient_variant', [
+            [1, '1063-117507', 'A', 'chr1_117098850', 'C', 'hom'],
+            [1, '1063-117507', 'B', 'chr1_117098850', 'C', 'hom'],
+        ])
+		
+	}
+	
 	void testDrugRecommendationsInvalidInputVariants() {
 
 		def msg
@@ -382,7 +437,7 @@ public class HaplotypeTest extends DBTest {
         msg = shouldFail(InvalidInputException) {
             drugRecommendationsTest(
                 variants: [rowsAsStream([
-                    variantsHeader,
+                    HaplotypeInput.inputHeaders.variant,
                     ['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr1_117098850', 'CA', 'A.Conservative', '1063-117507', 'Automatic'],
                     ['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr1_196991682', 'G', 'A.Conservative', '1063-117507', 'Automatic'],
                     ['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr22_35868467', 'CAT', 'A.Conservative', '1063-117507', 'Automatic'],
@@ -390,19 +445,21 @@ public class HaplotypeTest extends DBTest {
             )
         }
         assert msg =~ /Number of alleles was/
-		
-		msg = shouldFail(InvalidInputException) {
-			drugRecommendationsTest(
-				variants: [rowsAsStream([
-					['some', 'madeup', 'header'],
-					['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr1_117098850', 'CA', 'A.Conservative', '1063-117507', 'Automatic'],
-					['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr1_196991682', 'G', 'A.Conservative', '1063-117507', 'Automatic'],
-					['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr22_35868467', 'CA', 'A.Conservative', '1063-117507', 'Automatic'],
-				])]
-			)
-		}
-		assert msg =~ /Expected header line/
-		
+
+        // too few columns
+        msg = shouldFail(InvalidInputException) {
+            drugRecommendationsTest(
+                variants: [rowsAsStream([
+                    HaplotypeInput.inputHeaders.variant,
+                    ['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr1_117098850', 'CA', 'A.Conservative', '1063-117507', 'Automatic'],
+                    // truncated # of columns
+                    ['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1'],
+                    ['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr22_35868467', 'CA', 'A.Conservative', '1063-117507', 'Automatic'],
+                ])]
+            )
+        }
+        assert msg =~ /Expected \d+ columns matching header/
+
     }
 
 }

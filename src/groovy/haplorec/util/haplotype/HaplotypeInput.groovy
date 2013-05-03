@@ -4,14 +4,20 @@ import groovy.lang.Closure;
 import haplorec.util.Input
 
 public class HaplotypeInput {
-    static Set inputTables = [
-        'variant',
-        'genePhenotype',
-        'genotype',
-        'geneHaplotype',
-    ] as Set
+    // if we see the header, skip it, o/w assume its a row
+    static final Boolean defaultRequireHeader = false
+    static final Map inputHeaders = [
+        variant : ['PLATE', 'EXPERIMENT', 'CHIP', 'WELL_POSITION', 'ASSAY_ID', 'GENOTYPE_ID', 'DESCRIPTION', 'SAMPLE_ID', 'ENTRY_OPERATOR'],
+        genePhenotype : ['SAMPLE_ID', 'GENE', 'PHENOTYPE'],
+        genotype : ['SAMPLE_ID', 'GENE', 'HAPLOTYPE', 'HAPLOTYPE'],
+        geneHaplotype : ['SAMPLE_ID', 'GENE', 'HAPLOTYPE'],
+    ]
 
-    /* Given a tableAlias (
+    static final Set inputTables = inputHeaders.keySet()
+
+    /* Given a tableAlias, return a function of the type (Map kwargs = [:], fileOrStream) -> iterator that 
+     * returns an row iterator over a file or input stream (kwargs are the same as those defined in 
+     * Input.dsv).  This is just a wrapper over Input.dsv.
      */
     static def tableAliasToTableReader(String tableAlias) {
         def tableReader = "${tableAlias}s"
@@ -22,38 +28,60 @@ public class HaplotypeInput {
 			return HaplotypeInput.&"${tableReader}"
 		} else {
 			// return a default reader
-			return HaplotypeInput.&defaultReader
+			return HaplotypeInput.defaultReader(tableAlias)
 		}
     }
 	
-	static def defaultReader(Map kwargs = [:], fileOrStream) {
-		return Input.dsv(fileOrStream,
-			asList: true,
-		)
+    /* Default table reader.
+     * (NOTE: you need to define inputHeaders for the tableAlias)
+     */
+	static def defaultReader(String tableAlias) {
+        return { Map kwargs = [:], fileOrStream ->
+            return Input.dsv(
+                // overridable kwargs to Input.dsv 
+                [:] +
+                kwargs + 
+                // non-overridable kwargs to Input.dsv 
+                [
+                    asList: true,
+                    header: inputHeaders[tableAlias],
+                    requireHeader: defaultRequireHeader,
+                ], fileOrStream)
+        }
 	}
+
+    /* Table specific iterators  
+     * (NOTE: the function name must be the table alias plus an 's' to be recognized by tableAliasToTableReader) 
+     */
 
 	static def variants(Map kwargs = [:], fileOrStream) {
 		if (kwargs.asList == null) { kwargs.asList = true }
 		if (kwargs.skipEmptyAlleles == null) { kwargs.skipEmptyAlleles = false }
         def iter = Input.dsv(kwargs + [
-            header: ['PLATE', 'EXPERIMENT', 'CHIP', 'WELL_POSITION', 'ASSAY_ID', 'GENOTYPE_ID', 'DESCRIPTION', 'SAMPLE_ID', 'ENTRY_OPERATOR'],
+            header: inputHeaders.variant,
+            requireHeader: defaultRequireHeader,
             fields: ['ASSAY_ID', 'GENOTYPE_ID', 'SAMPLE_ID'],
             asList: false,
         ], fileOrStream)
         return new Object() {
             def each(Closure f) {
                 def chromosomes = ['A', 'B']
-                iter.each { snpId, alleles, patientId -> 
+                iter.each { snpId, allelesStr, patientId -> 
                     def zygosity 
-                    if (alleles.length() == 2) {
+                    def alleles
+                    if (allelesStr.length() == 2) {
                         zygosity = 'het'
-                    } else if (alleles.length() == 1) {
+                        alleles = allelesStr.collect()
+                    } else if (allelesStr.length() == 1) {
                         zygosity = 'hom'
-                    } else if (alleles.length() != 0) {
-                        throw new Input.InvalidInputException("Number of alleles was ${alleles.length()} for ${snpId} ${alleles}; expected 0, 1, or 2".toString())
+                        alleles = allelesStr.collect() * 2
+                    } else if (allelesStr.length() == 0) {
+                        alleles = ['']
+                    } else {
+                        throw new Input.InvalidInputException("Number of alleles was ${allelesStr.length()} for ${snpId} ${allelesStr}; expected 0, 1, or 2".toString())
                     }
                     int i = 0
-                    alleles.split('').each { allele ->
+                    alleles.each { allele ->
                         def checkAllele = { value -> (allele == '') ? null : value } 
                         def chromosome = checkAllele(chromosomes[i])
                         Input.applyF(kwargs.asList, [patientId, chromosome, snpId, checkAllele(allele), checkAllele(zygosity)], f)

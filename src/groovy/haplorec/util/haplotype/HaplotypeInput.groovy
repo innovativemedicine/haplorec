@@ -50,7 +50,7 @@ public class HaplotypeInput {
                     } else if (alleles.length() == 1) {
                         zygosity = 'hom'
                     } else if (alleles.length() != 0) {
-                        throw Input.InvalidInputException("Number of alleles was ${alleles.length()} for ${snpId} ${alleles}; expected 0, 1, or 2")
+                        throw new Input.InvalidInputException("Number of alleles was ${alleles.length()} for ${snpId} ${alleles}; expected 0, 1, or 2".toString())
                     }
                     int i = 0
                     alleles.split('').each { allele ->

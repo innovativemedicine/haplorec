@@ -3,6 +3,7 @@ package haplorec.test.util
 import java.util.Map;
 
 import haplorec.util.Haplotype
+import haplorec.util.Input.InvalidInputException
 import haplorec.util.Sql
 
 import groovy.util.GroovyTestCase
@@ -361,6 +362,33 @@ public class HaplotypeTest extends DBTest {
             [1, 'patient1', 1],
         ])
 
+    }
+
+    private def rowsAsStream(Map kwargs = [:], rows) {
+        if (kwargs.separator == null) { kwargs.separator = '\t' }
+        StringBuffer buffer = new StringBuffer()
+        rows.each { row ->
+            buffer.append row.join(kwargs.separator)
+            buffer.append System.getProperty("line.separator")
+        }
+        return new BufferedReader(new StringReader(buffer.toString()))
+    }
+
+    def variantsHeader = ['PLATE', 'EXPERIMENT', 'CHIP', 'WELL_POSITION', 'ASSAY_ID', 'GENOTYPE_ID', 'DESCRIPTION', 'SAMPLE_ID', 'ENTRY_OPERATOR']
+    void testDrugRecommendationsInvalidInput() {
+
+        def msg = shouldFail(InvalidInputException) {
+            drugRecommendationsTest(
+                variants: [rowsAsStream([
+                    variantsHeader,
+                    ['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr1_117098850', 'CA', 'A.Conservative', '1063-117507', 'Automatic'],
+                    ['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr1_196991682', 'G', 'A.Conservative', '1063-117507', 'Automatic'],
+                    ['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr22_35868467', 'CAT', 'A.Conservative', '1063-117507', 'Automatic'],
+                ])]
+            )
+        }
+        assert msg =~ /Number of alleles was/
+		
     }
 
 }

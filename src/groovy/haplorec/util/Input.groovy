@@ -1,8 +1,11 @@
 package haplorec.util
 
+import groovy.transform.InheritConstructors;
+
 class Input {
 	
-	class InvalidInputException extends RuntimeException {}
+	@InheritConstructors
+	static class InvalidInputException extends RuntimeException {}
 	
 	static private def fileOrOpen(file) {
 		if (file != null) {

@@ -270,7 +270,6 @@ public class Haplotype {
                 where: "column_key != 'PRI'")
 			m
         }
-        println jobTableInsertColumns
         def buildFromInput = { alias, rawInput ->
             def input = pipelineInput(alias, rawInput)
             def jobRowIter = new Object() {

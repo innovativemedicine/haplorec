@@ -375,9 +375,11 @@ public class HaplotypeTest extends DBTest {
     }
 
     def variantsHeader = ['PLATE', 'EXPERIMENT', 'CHIP', 'WELL_POSITION', 'ASSAY_ID', 'GENOTYPE_ID', 'DESCRIPTION', 'SAMPLE_ID', 'ENTRY_OPERATOR']
-    void testDrugRecommendationsInvalidInput() {
+	void testDrugRecommendationsInvalidInputVariants() {
 
-        def msg = shouldFail(InvalidInputException) {
+		def msg
+		
+        msg = shouldFail(InvalidInputException) {
             drugRecommendationsTest(
                 variants: [rowsAsStream([
                     variantsHeader,
@@ -388,6 +390,18 @@ public class HaplotypeTest extends DBTest {
             )
         }
         assert msg =~ /Number of alleles was/
+		
+		msg = shouldFail(InvalidInputException) {
+			drugRecommendationsTest(
+				variants: [rowsAsStream([
+					['some', 'madeup', 'header'],
+					['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr1_117098850', 'CA', 'A.Conservative', '1063-117507', 'Automatic'],
+					['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr1_196991682', 'G', 'A.Conservative', '1063-117507', 'Automatic'],
+					['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr22_35868467', 'CA', 'A.Conservative', '1063-117507', 'Automatic'],
+				])]
+			)
+		}
+		assert msg =~ /Expected header line/
 		
     }
 

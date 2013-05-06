@@ -124,5 +124,8 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
 - TODO: record 'closely matched' haplotypes for genes
 - TODO: test using a real dataset
   - TODO: make sure we didn't miss any requirements
+- fix bug where for variants we only want to do tableA set is contained by tableB set (NOT either or); this failure identified by testGeneHaplotype
+- fix bug where for phenotypes we only want to do tableA set is contained by tableB set (NOT either or); this failure identified by testGenePhenotype
+- error out when a kwargs is not used to avoid using the wrong name for a dataset?
 
 Questions:

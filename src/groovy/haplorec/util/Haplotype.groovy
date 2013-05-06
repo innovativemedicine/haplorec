@@ -70,17 +70,17 @@ public class Haplotype {
         setDefaultKwargs(kwargs)
         return Sql.selectWhereSetContains(
             sql,
-            kwargs.genePhenotype,
             'gene_phenotype_drug_recommendation',
+            kwargs.genePhenotype,
             ['gene_name', 'phenotype_name'],
-            tableAGroupBy: ['job_id', 'patient_id'],
-            tableBGroupBy: ['drug_recommendation_id'],
+            tableAGroupBy: ['drug_recommendation_id'],
+            tableBGroupBy: ['job_id', 'patient_id'],
             select: ['job_id', 'patient_id', 'drug_recommendation_id'],
             intoTable: kwargs.drugRecommendation,
             onDuplicateKey: 'discard',
             saveAs:kwargs.saveAs, 
             sqlParams:kwargs.sqlParams,
-            tableAWhere: { t -> "${t}.job_id = :job_id" },
+            tableBWhere: { t -> "${t}.job_id = :job_id" },
         )
     }
 
@@ -117,15 +117,15 @@ public class Haplotype {
     static private def variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql, insertColumns, Closure withSetContainsQuery) { setDefaultKwargs(kwargs)
         def setContainsQuery = Sql.selectWhereSetContains(
             sql,
-            kwargs.variant,
             'gene_haplotype_variant',
+            kwargs.variant,
 			['snp_id', 'allele'],
-            tableAGroupBy: ['job_id', 'patient_id', 'physical_chromosome'],
-            tableBGroupBy: ['gene_name', 'haplotype_name'],
+            tableAGroupBy: ['gene_name', 'haplotype_name'],
+            tableBGroupBy: ['job_id', 'patient_id', 'physical_chromosome'],
 			select: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name', 'haplotype_name'],
             saveAs: 'query', 
             sqlParams: kwargs.sqlParams,
-			tableAWhere: { t -> "${t}.job_id = :job_id" },
+			tableBWhere: { t -> "${t}.job_id = :job_id" },
         )
 		def query = withSetContainsQuery(setContainsQuery)
         Sql.selectAs(sql, query, insertColumns,
@@ -149,17 +149,17 @@ public class Haplotype {
         setDefaultKwargs(kwargs)
         return Sql.selectWhereSetContains(
             sql,
-            kwargs.genotype,
             'genotype_drug_recommendation',
+            kwargs.genotype,
             ['gene_name', 'haplotype_name1', 'haplotype_name2'],
-            tableAGroupBy: ['job_id', 'patient_id'],
-            tableBGroupBy: ['drug_recommendation_id'],
+            tableAGroupBy: ['drug_recommendation_id'],
+            tableBGroupBy: ['job_id', 'patient_id'],
             select: ['job_id', 'patient_id', 'drug_recommendation_id'],
             intoTable: kwargs.drugRecommendation,
             onDuplicateKey: 'discard',
             saveAs:kwargs.saveAs, 
             sqlParams:kwargs.sqlParams,
-			tableAWhere: { t -> "${t}.job_id = :job_id" },
+			tableBWhere: { t -> "${t}.job_id = :job_id" },
         )
     }
 
@@ -230,7 +230,6 @@ public class Haplotype {
 	// - delete existing rows in a table before creating rows
 	// - optimization: figure out what tables are already "built" (select count(*) from $table where job_id = :job_id) and pass it to build()
 	static def drugRecommendations(Map kwargs = [:], groovy.sql.Sql sql) {
-		if (kwargs.newPipelineJob == null) { kwargs.newPipelineJob = true }
 		if (kwargs.ambiguousVariants == null) { kwargs.ambiguousVariants = true }
 		def tableKey = { defaultTable ->
 			defaultTable.replaceFirst(/^job_/,  "")

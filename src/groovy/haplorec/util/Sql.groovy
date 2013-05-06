@@ -56,10 +56,9 @@ class Sql {
 			}
 		}
 	}
-	
-	// saveAs = (MEMORY|MyISAM|query|existing)
-	static def selectWhereSetContains(Map kwargs = [:], groovy.sql.Sql sql, tableA, tableB, setColumns) {
-		setDefaultKwargs(kwargs)
+
+	private static def intersectQuery(Map kwargs = [:], groovy.sql.Sql sql, tableA, tableB, setColumns, Closure countsTableWhere) {
+        setDefaultKwargs(kwargs)
 		assert kwargs.tableAGroupBy != null || kwargs.tableBGroupBy != null
 		if (kwargs.tableBGroupBy == null) {
 			kwargs.tableBGroupBy = kwargs.tableAGroupBy
@@ -99,28 +98,51 @@ class Sql {
 			def whereConjunctions =	((where != null) ? ["(${evalWhere(where, 'inner_table')})"] : []) + (groupByColumns ?: []).collect { "inner_table.$it = counts_table.$it" }
 			return "select count(*) from ${table} inner_table ${(whereConjunctions.size() > 0) ? "where " + whereConjunctions.join(' and ') : ''}"
 		}
+        def countsTableWhereStr = countsTableWhere(
+            "counts_table.group_count", 
+            tableCount(tableA, kwargs.tableAWhere, kwargs.tableAGroupBy), 
+            tableCount(tableB, kwargs.tableBWhere, kwargs.tableBGroupBy))
 		def query = """\
-			select distinct ${selectColumnStr('counts_table')} from ${tableB} outer_table
-			join (
-			    select ${groupByColumnsStr}, count(*) as group_count
-			    from ${tableB} join ${tableA} using (${setColumns.join(', ')})
-				${(groupCountWhere != null) ? "where ${groupCountWhere}" : ''}
-			    group by ${groupByColumnsStr} 
-			) counts_table
-			where 
-				${kwargs.tableBGroupBy.collect { "counts_table.$it = outer_table.$it" }.join(' and ')} 
-				and counts_table.group_count = least(
-				    (${tableCount(tableA, kwargs.tableAWhere, kwargs.tableAGroupBy)}), 
-				    (${tableCount(tableB, kwargs.tableBWhere, kwargs.tableBGroupBy)})
-				)
-        """
+            |select distinct ${selectColumnStr('counts_table')} from (
+            |    select ${groupByColumnsStr}, count(*) as group_count
+            |    from ${tableB} join ${tableA} using (${setColumns.join(', ')})
+            |    ${(groupCountWhere != null) ? "where ${groupCountWhere}" : ''}
+            |    group by ${groupByColumnsStr} 
+            |) counts_table
+            |where 
+            |    ${countsTableWhereStr}""".stripMargin()
 		return selectAs(sql, query, kwargs.select,
 			intoTable:kwargs.intoTable,
 			indexColumns:kwargs.indexColumns,
 			saveAs:kwargs.saveAs,
 			onDuplicateKey:kwargs.onDuplicateKey,
 			sqlParams:kwargs.sqlParams)
+
+    }
+
+    // A contains B or B contains A
+	static def selectWhereEitherSetContains(Map kwargs = [:], groovy.sql.Sql sql, tableA, tableB, setColumns) {
+        return intersectQuery(kwargs, sql, tableA, tableB, setColumns) { intersectSize, ASizeQuery, BSizeQuery ->
+            return """\
+                |$intersectSize = least(
+                |    ( $ASizeQuery ),
+                |    ( $BSizeQuery )
+                |)
+            """.stripMargin()
+        }
 	}
+
+    // A contains B
+	static def selectWhereSetContains(Map kwargs = [:], groovy.sql.Sql sql, tableA, tableB, setColumns) {
+        return intersectQuery(kwargs, sql, tableA, tableB, setColumns) { intersectSize, ASizeQuery, BSizeQuery ->
+            return """\
+                |$intersectSize >= (
+                |    $ASizeQuery
+                |)
+            """.stripMargin()
+        }
+	}
+
 
 	// columnMap = ['x':'x', 'y':['y1', 'y2']]
 	// A(x, y) B(x, y1, y2)

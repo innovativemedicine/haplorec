@@ -239,7 +239,7 @@ public class HaplotypeTest extends DBTest {
 		drugRecommendationsTest(
 			ambiguousVariants: false,
 			variants: [
-				// TODO: i think select disinct is messing up selectWhereSetContains for this testcase; figure out how to work around that
+				// TODO: i think select disinct is messing up selectWhereEitherSetContains for this testcase; figure out how to work around that
 				['patient1', 'chr1A', 'rs1', 'A'],
 				['patient1', 'chr1A', 'rs2', 'G'],
 				['patient1', 'chr1B', 'rs1', 'A'],
@@ -461,5 +461,167 @@ public class HaplotypeTest extends DBTest {
         assert msg =~ /Expected \d+ columns matching header/
 
     }
+	
+	void testGeneHaplotypeOnlySubset() {
+		
+        /* Test that haplotypes where we only have some (i.e. a strict subset) of the variants needed to call it are ignored.
+         */
+        def sampleData = [
+            gene_haplotype_variant: [
+                ['g1', '*1', 'rs1', 'A'],
+                ['g1', '*1', 'rs2', 'G'],
+            ],
+        ]
+        insertSampleData(sampleData)
+
+        drugRecommendationsTest(
+            ambiguousVariants: false,
+            variants: [
+                ['patient1', 'chr1A', 'rs1', 'A'],
+                ['patient1', 'chr1B', 'rs1', 'A'],
+            ])
+        assertJobTable('job_patient_gene_haplotype', [
+            // should be empty
+        ])
+
+	}
+
+	void testGenotypeOnlySubset() {
+		
+        /* Test that drug recommendations where we only have some (i.e. a strict subset) of the genotypes needed to call it are ignored.
+         */
+        def sampleData = [
+            drug_recommendation: [
+                columns:['id', 'recommendation'],
+                rows:[
+                    [1, 'drug'],
+                    [2, 'some drug'],
+                    [3, 'no drug'],
+                ],
+            ],
+            genotype_drug_recommendation: [
+                ['g1', '*1', '*1', 1],
+                ['g2', '*1', '*2', 1],
+                ['g3', '*3', '*4', 1],
+                ['g4', '*1', '*1', 1],
+            ],
+        ]
+        insertSampleData(sampleData)
+
+        drugRecommendationsTest(
+            genotypes: [
+                ['patient1', 'g1', '*1', '*1'],
+                ['patient1', 'g2', '*1', '*2'],
+                ['patient1', 'g3', '*3', '*4'],
+                // missing g4 *1/*1 needed for drug_recommendation 1
+            ])
+        assertJobTable('job_patient_drug_recommendation', [
+            // should be empty
+        ])
+
+	}
+
+	void testGenotypeSuperset() {
+		
+        /* Test that drug recommendations where we have all and more (i.e. a superset) of the genotypes needed to call it aren't ignored.
+         */
+        def sampleData = [
+            drug_recommendation: [
+                columns:['id', 'recommendation'],
+                rows:[
+                    [1, 'drug'],
+                    [2, 'some drug'],
+                    [3, 'no drug'],
+                ],
+            ],
+            genotype_drug_recommendation: [
+                ['g1', '*1', '*1', 1],
+                ['g2', '*1', '*2', 1],
+                ['g3', '*3', '*4', 1],
+                ['g4', '*1', '*1', 1],
+            ],
+        ]
+        insertSampleData(sampleData)
+
+        drugRecommendationsTest(
+            genotypes: [
+                ['patient1', 'g1', '*1', '*1'],
+                ['patient1', 'g2', '*1', '*2'],
+                ['patient1', 'g3', '*3', '*4'],
+                ['patient1', 'g4', '*1', '*1'],
+                ['patient1', 'g5', '*1', '*1'],
+                // missing g4 *1/*1 needed for drug_recommendation 1
+            ])
+        assertJobTable('job_patient_drug_recommendation', [
+            [1, 'patient1', 1],
+        ])
+
+	}
+
+	void testGenePhenotypeOnlySubset() {
+		
+        /* Test that phenotypes where we only have some (i.e. a strict subset) of the genotypes needed to call it are ignored.
+         */
+        def sampleData = [
+            drug_recommendation: [
+                columns:['id', 'recommendation'],
+                rows:[
+                    [1, 'drug'],
+                    [2, 'some drug'],
+                    [3, 'no drug'],
+                ],
+            ],
+            gene_phenotype_drug_recommendation: [
+                ['g1', 'homozygote normal', 1],
+                ['g2', 'homozygote', 1],
+                ['g3', 'heterozygote', 1],
+            ],
+        ]
+        insertSampleData(sampleData)
+
+        drugRecommendationsTest(
+            genePhenotypes: [
+                ['patient1', 'g1', 'homozygote normal'],
+                ['patient1', 'g2', 'homozygote'],
+                // missing g3 heterozygote needed for drug_recommendation 1
+            ])
+        assertJobTable('job_patient_drug_recommendation', [
+            // should be empty
+        ])
+
+	}
+
+	void testGenePhenotypeSuperset() {
+		
+        /* Test that phenotypes where we have all and more (i.e. a superset) of the genotypes needed to call it aren't ignored.
+         */
+        def sampleData = [
+            drug_recommendation: [
+                columns:['id', 'recommendation'],
+                rows:[
+                    [1, 'drug'],
+                    [2, 'some drug'],
+                    [3, 'no drug'],
+                ],
+            ],
+            gene_phenotype_drug_recommendation: [
+                ['g1', 'homozygote normal', 1],
+                ['g2', 'homozygote', 1],
+                ['g3', 'heterozygote', 1],
+            ],
+        ]
+        insertSampleData(sampleData)
+
+        drugRecommendationsTest(
+            genePhenotypes: [
+                ['patient1', 'g1', 'homozygote normal'],
+                ['patient1', 'g2', 'homozygote'],
+                ['patient1', 'g3', 'heterozygote'],
+            ])
+        assertJobTable('job_patient_drug_recommendation', [
+            [1, 'patient1', 1],
+        ])
+
+	}
 
 }

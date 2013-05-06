@@ -190,8 +190,8 @@ public class SqlTest extends DBTest {
         createTableFromExistingTest(columns:['x'], indexColumns:['x'], existingRows)
 		createTableFromExistingTest(columns:['x', 'y'], indexColumns:[['x'], ['x', 'y']], existingRows)
     }
-	
-	def selectWhereSetContainsTest(Map kwargs = [:], tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows) {
+
+	def _setContainsTest(Map kwargs = [:], tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows, f) {
 		def (tableA, tableAColumns) = parseCreateTableStatement(tableACreateStmt)
 		def (tableB, tableBColumns) = parseCreateTableStatement(tableBCreateStmt)
 		try {
@@ -202,7 +202,7 @@ public class SqlTest extends DBTest {
 				]
 			) {
 				def setColumns = tableBColumns.grep { b -> tableAColumns.any { a -> b == a } }
-				Sql.selectWhereSetContains(kwargs + [intoTable:'C'], sql, tableA, tableB, setColumns)
+				f(kwargs + [intoTable:'C'], sql, tableA, tableB, setColumns)
 				assertEquals(expectRows.sort(), select(sql, 'C', kwargs.selectAnswer ?: kwargs.select).sort())
 			}
 		} finally {
@@ -210,9 +210,108 @@ public class SqlTest extends DBTest {
 		}
 	}
 	
+	def selectWhereEitherSetContainsTest(Map kwargs = [:], tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows) {
+        _setContainsTest(kwargs, tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows, Sql.&selectWhereEitherSetContains)
+    }
+
+	def selectWhereSetContainsTest(Map kwargs = [:], tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows) {
+        _setContainsTest(kwargs, tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows, Sql.&selectWhereSetContains)
+    }
+	
 	void testSelectWhereSetContains() {
 
 		selectWhereSetContainsTest(
+			// { (x, y) }
+			"create table A(x integer, y integer)",
+			[
+				[1, 1],
+				[1, 2],
+				[1, 3],
+				[1, 4],
+			],
+			// z, { (x, y) }
+			tableBGroupBy: ['z'],
+			"create table B(z integer, x integer, y integer)",
+			[
+				// A == B
+				[10, 1, 1],
+				[10, 1, 2],
+				[10, 1, 3],
+				[10, 1, 4],
+				// A <= B (ignored)
+				[20, 1, 1],
+				[20, 1, 2],
+				[20, 1, 3],
+				// A >= B
+				[30, 1, 1],
+				[30, 1, 2],
+				[30, 1, 3],
+				[30, 1, 4],
+				[30, 1, 5],
+				// nonzero intersection, but neither subset nor superset
+				[40, 1, 1],
+				[40, 1, 5],
+			],
+			select: ['z'],
+			[
+				[10],
+				[30],
+			])
+
+
+		selectWhereSetContainsTest(
+			// a, b, { (x, y) }
+			tableAGroupBy: ['a', 'b'],
+			"create table A(a integer, b integer, x integer, y integer)",
+			[
+				[11, 12, 1, 1],
+				[11, 12, 1, 2],
+				[11, 12, 1, 3],
+				[11, 12, 1, 4],
+
+				[13, 14, 1, 1],
+				[13, 14, 1, 2],
+				[13, 14, 1, 3],
+				[13, 14, 1, 4],
+			],
+			// z, { (x, y) }
+			tableBGroupBy: ['z'],
+			"create table B(z integer, x integer, y integer)",
+			[
+				// A == B
+				[10, 1, 1],
+				[10, 1, 2],
+				[10, 1, 3],
+				[10, 1, 4],
+				// A <= B (ignored)
+				[20, 1, 1],
+				[20, 1, 2],
+				[20, 1, 3],
+				// A >= B
+				[30, 1, 1],
+				[30, 1, 2],
+				[30, 1, 3],
+				[30, 1, 4],
+				[30, 1, 5],
+				// nonzero intersection, but neither subset nor superset
+				[40, 1, 1],
+				[40, 1, 5],
+			],
+			// a, b, z, { (x, y) }
+			select: ['a', 'b', 'z'],
+			[
+				[11, 12, 10],
+				[11, 12, 30],
+
+				[13, 14, 10],
+				[13, 14, 30],
+			])
+		
+    }
+
+	void testSelectWhereEitherSetContains() {
+
+		selectWhereEitherSetContainsTest(
 			// { (x, y) }
 			"create table A(x integer, y integer)",
 			[
@@ -251,7 +350,7 @@ public class SqlTest extends DBTest {
 				[30],
 			])
 
-		selectWhereSetContainsTest(
+		selectWhereEitherSetContainsTest(
 			// { (a, b) }
 			"create table A(a varchar(10), b varchar(5))",
 			[
@@ -290,7 +389,7 @@ public class SqlTest extends DBTest {
 				['30', '30_'],
 			])
 
-		selectWhereSetContainsTest(
+		selectWhereEitherSetContainsTest(
 			// a, b, { (x, y) }
 			tableAGroupBy: ['a', 'b'],
 			"create table A(a integer, b integer, x integer, y integer)",
@@ -340,7 +439,7 @@ public class SqlTest extends DBTest {
 				[13, 14, 30],
 			])
 		
-		selectWhereSetContainsTest(
+		selectWhereEitherSetContainsTest(
 			sqlParams:[somevar:55],
 			// { (x, y) }
 			"create table A(x integer, y integer)",

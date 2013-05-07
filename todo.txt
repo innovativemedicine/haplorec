@@ -161,4 +161,6 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
   - perform mega join query
     - one for phenotype
     - one for genotype
+    - kinda did this, minus querying table metadata (it's hardcoded)
   - create a function that wraps the row results and eliminates duplicity that we don't want
+    - in Sql module, create a function for getting table primary key metadata: [ table : [primary key] ]

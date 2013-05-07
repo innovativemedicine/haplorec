@@ -1,9 +1,9 @@
-package haplorec.util.haplotype
+package haplorec.util.pipeline
 
 import groovy.lang.Closure;
 import haplorec.util.Input
 
-public class HaplotypeInput {
+public class PipelineInput {
     // if we see the header, skip it, o/w assume its a row
     static final Boolean defaultRequireHeader = false
     static final Map inputHeaders = [
@@ -22,13 +22,13 @@ public class HaplotypeInput {
     static def tableAliasToTableReader(String tableAlias) {
         def tableReader = "${tableAlias}s"
         if (!inputTables.contains(tableAlias)) {
-            throw new IllegalArgumentException("no input reader for table ${tableAlias}; try adding it to inputTables and defining HaplotypeInput.${tableReader}")
+            throw new IllegalArgumentException("no input reader for table ${tableAlias}; try adding it to inputTables and defining PipelineInput.${tableReader}")
         }
-		if (HaplotypeInput.metaClass.respondsTo(HaplotypeInput, tableReader)) {
-			return HaplotypeInput.&"${tableReader}"
+		if (PipelineInput.metaClass.respondsTo(PipelineInput, tableReader)) {
+			return PipelineInput.&"${tableReader}"
 		} else {
 			// return a default reader
-			return HaplotypeInput.defaultReader(tableAlias)
+			return PipelineInput.defaultReader(tableAlias)
 		}
     }
 	

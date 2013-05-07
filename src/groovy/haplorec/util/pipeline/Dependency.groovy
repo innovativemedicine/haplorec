@@ -1,4 +1,4 @@
-package haplorec.util.haplotype
+package haplorec.util.pipeline
 
 class Dependency extends haplorec.util.dependency.Dependency {
 

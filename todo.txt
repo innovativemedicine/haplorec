@@ -130,3 +130,35 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
 
 - make a summary report illustrating how data was obtained from mapping tables in the pipeline
   - split drug recommendations into phenotype / genotype based
+
+- optimization: make drugRecommendations accept a dataSource as an argument (for generating Sql 
+  instances), so it can pass an extra Sql instance to the geneHaplotypeToGenotype stage (for 
+  groupedRowsToColumns)
+
+- make a summary report file available for download  
+  [o] split drug recommendations into phenotype / genotype based
+  - the report file should illustrate where data came from at each stage
+    - which variants map to a particular haplotype (from haplotype join variants)
+    - which genotypes map to a particular phenotype (phenotypes join genotypes... but multiple genotype sets might map to the same phenotype.... blah)
+    - which phenotypes/genotypes map to a particular drug recommendation (same issue as above; resolving the many side in a many-to-one relationship; we need to record the many when we record the one from which it came)
+  - 2 approaches
+    - straight up sql
+      - pros: 
+        - single query, so probably faster
+        - works for arbitrary queries
+        - easier to test (easy to make toy tables; ORM needs domains)
+      - cons: 
+        - (might) use more ram
+        - need to query metadata information for tables
+    - ORM
+      - pros:
+        - no sql
+      - cons: 
+        - multiple queries
+        - limited to queries across foreign key relationships
+
+- straight up sql
+  - perform mega join query
+    - one for phenotype
+    - one for genotype
+  - create a function that wraps the row results and eliminates duplicity that we don't want

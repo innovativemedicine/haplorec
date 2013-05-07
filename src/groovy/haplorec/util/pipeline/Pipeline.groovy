@@ -1,13 +1,11 @@
-package haplorec.util
+package haplorec.util.pipeline
 
 import haplorec.util.Input
 import haplorec.util.Sql
 import haplorec.util.dependency.DependencyGraphBuilder
 import haplorec.util.dependency.Dependency
-import haplorec.util.haplotype.HaplotypeInput;
-import haplorec.util.haplotype.HaplotypeDependencyGraphBuilder
 
-public class Haplotype {
+public class Pipeline {
     private static def ambiguousVariants = 'job_patient_variant'
     private static def unambiguousVariants = 'job_patient_chromosome_variant'
     // table alias to SQL table name mapping
@@ -196,7 +194,7 @@ public class Haplotype {
 
         def builder = new HaplotypeDependencyGraphBuilder()
         Map dependencies = [:]
-        def canUpload = { d -> HaplotypeInput.inputTables.contains(d) }
+        def canUpload = { d -> PipelineInput.inputTables.contains(d) }
 
         dependencies.genotypeDrugRecommendation = builder.dependency(id: 'genotypeDrugRecommendation', target: 'genotypeDrugRecommendation', 
         name: "Genotype Drug Recommendations",
@@ -336,7 +334,7 @@ public class Haplotype {
     private static def pipelineInput(tableAlias, input) {
         if (input instanceof List && input.size() > 0 && input[0] instanceof BufferedReader) {
 			// input is a filehandle
-			def tableReader = HaplotypeInput.tableAliasToTableReader(tableAlias)
+			def tableReader = PipelineInput.tableAliasToTableReader(tableAlias)
             return new Object() {
                 def each(Closure f) {
                     input.each { inputStream ->
@@ -351,7 +349,7 @@ public class Haplotype {
             return input
         } else if (input instanceof CharSequence) {
             // input is a filename
-            def tableReader = HaplotypeInput.tableAliasToTableReader(tableAlias)
+            def tableReader = PipelineInput.tableAliasToTableReader(tableAlias)
             return tableReader(input)
         } else {
             throw new IllegalArgumentException("Invalid input for table ${tableAlias}; expected a list of rows or a filepath but saw ${input}")

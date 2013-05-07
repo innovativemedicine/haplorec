@@ -1,6 +1,6 @@
 package haplorec.test.util
 
-import haplorec.util.Haplotype
+import haplorec.util.pipeline.Pipeline;
 
 import groovy.sql.Sql;
 import groovy.util.GroovyTestCase

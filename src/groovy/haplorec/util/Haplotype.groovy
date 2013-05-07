@@ -16,7 +16,8 @@ public class Haplotype {
         genePhenotype      : 'job_patient_gene_phenotype',
         genotype           : 'job_patient_genotype',
         geneHaplotype      : 'job_patient_gene_haplotype',
-        drugRecommendation : 'job_patient_drug_recommendation',
+        genotypeDrugRecommendation : 'job_patient_genotype_drug_recommendation',
+        phenotypeDrugRecommendation : 'job_patient_phenotype_drug_recommendation',
         job                : 'job',
     ]
     private static Set<CharSequence> jobTables = new HashSet(defaultTables.grep { it.key != 'job' }.collect { it.value } + [ambiguousVariants, unambiguousVariants])
@@ -66,7 +67,7 @@ public class Haplotype {
     }
 
     // inputGenePhenotype = create table(gene_name, phenotype_name, index(gene_name, phenotype_name))
-    static def genePhenotypeToDrugRecommendation(Map kwargs = [:], groovy.sql.Sql sql) {
+    static def genePhenotypeToPhenotypeDrugRecommendation(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
         return Sql.selectWhereSetContains(
             sql,
@@ -76,8 +77,7 @@ public class Haplotype {
             tableAGroupBy: ['drug_recommendation_id'],
             tableBGroupBy: ['job_id', 'patient_id'],
             select: ['job_id', 'patient_id', 'drug_recommendation_id'],
-            intoTable: kwargs.drugRecommendation,
-            onDuplicateKey: 'discard',
+            intoTable: kwargs.phenotypeDrugRecommendation,
             saveAs:kwargs.saveAs, 
             sqlParams:kwargs.sqlParams,
             tableBWhere: { t -> "${t}.job_id = :job_id" },
@@ -145,7 +145,7 @@ public class Haplotype {
         }
     }
 
-    static def genotypeToDrugRecommendation(Map kwargs = [:], groovy.sql.Sql sql) {
+    static def genotypeToGenotypeDrugRecommendation(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
         return Sql.selectWhereSetContains(
             sql,
@@ -155,8 +155,7 @@ public class Haplotype {
             tableAGroupBy: ['drug_recommendation_id'],
             tableBGroupBy: ['job_id', 'patient_id'],
             select: ['job_id', 'patient_id', 'drug_recommendation_id'],
-            intoTable: kwargs.drugRecommendation,
-            onDuplicateKey: 'discard',
+            intoTable: kwargs.genotypeDrugRecommendation,
             saveAs:kwargs.saveAs, 
             sqlParams:kwargs.sqlParams,
 			tableBWhere: { t -> "${t}.job_id = :job_id" },
@@ -198,10 +197,11 @@ public class Haplotype {
         def builder = new HaplotypeDependencyGraphBuilder()
         Map dependencies = [:]
         def canUpload = { d -> HaplotypeInput.inputTables.contains(d) }
-        dependencies.drugRecommendation = builder.dependency(id: 'drugRecommendation', target: 'drugRecommendation', 
-        name: "Drug Recommendations",
-        table: tbl.drugRecommendation,
-        fileUpload: canUpload('drugRecommendation')) {
+
+        dependencies.genotypeDrugRecommendation = builder.dependency(id: 'genotypeDrugRecommendation', target: 'genotypeDrugRecommendation', 
+        name: "Genotype Drug Recommendations",
+        table: tbl.genotypeDrugRecommendation,
+        fileUpload: canUpload('genotypeDrugRecommendation')) {
             dependencies.genotype = dependency(id: 'genotype', target: 'genotype', 
             name: "Genotypes",
             table: tbl.genotype,
@@ -216,6 +216,11 @@ public class Haplotype {
                     fileUpload: canUpload('variant'))
                 }
             }
+        }
+        dependencies.phenotypeDrugRecommendation = builder.dependency(id: 'phenotypeDrugRecommendation', target: 'phenotypeDrugRecommendation', 
+        name: "Phenotype Drug Recommendations",
+        table: tbl.phenotypeDrugRecommendation,
+        fileUpload: canUpload('phenotypeDrugRecommendation')) {
             dependencies.genePhenotype = dependency(id: 'genePhenotype', target: 'genePhenotype', 
             name: "Phenotypes",
             table: tbl.genePhenotype,
@@ -284,12 +289,11 @@ public class Haplotype {
             ]
         ]
 
-        dependencies.drugRecommendation.rule = { ->
-            genotypeToDrugRecommendation(pipelineKwargs, sql)
-            /* TODO: make sure this handles duplicates appropriately, either by filtering them out,
-             * or by indicating whether the recommendation is from genotype or phenotype information
-             */
-            genePhenotypeToDrugRecommendation(pipelineKwargs + [saveAs:'existing'], sql)
+        dependencies.genotypeDrugRecommendation.rule = { ->
+            genotypeToGenotypeDrugRecommendation(pipelineKwargs, sql)
+        }
+        dependencies.phenotypeDrugRecommendation.rule = { ->
+            genePhenotypeToPhenotypeDrugRecommendation(pipelineKwargs, sql)
         }
         dependencies.genotype.rule = { ->
             /* TODO: specify a way of dealing with tooManyHaplotypes errors
@@ -323,7 +327,8 @@ public class Haplotype {
 			}
         }
 
-        dependencies.drugRecommendation.build(built)
+        dependencies.phenotypeDrugRecommendation.build(built)
+        dependencies.genotypeDrugRecommendation.build(built)
 	}
 	
     /* Return an iterator over the pipeline input

@@ -31,7 +31,8 @@ public class HaplotypeTest extends DBTest {
 					  schemaFile:TEST_SCHEMA_FILE)
 
         columnsToCheck = [
-            job_patient_drug_recommendation : ['job_id', 'patient_id', 'drug_recommendation_id'],
+            job_patient_phenotype_drug_recommendation : ['job_id', 'patient_id', 'drug_recommendation_id'],
+            job_patient_genotype_drug_recommendation : ['job_id', 'patient_id', 'drug_recommendation_id'],
             job_patient_gene_haplotype      : ['job_id', 'patient_id', 'gene_name', 'haplotype_name'],
             job_patient_genotype            : ['job_id', 'patient_id', 'gene_name', 'haplotype_name1', 'haplotype_name2'],
             job_patient_gene_phenotype      : ['job_id', 'patient_id', 'gene_name', 'phenotype_name'],
@@ -146,7 +147,7 @@ public class HaplotypeTest extends DBTest {
 			[1, 'patient2', 'g1', 'heterozygote'],
 			[1, 'patient1', 'g1', 'homozygote normal'],
 		])
-		assertJobTable('job_patient_drug_recommendation', [
+		assertJobTable('job_patient_phenotype_drug_recommendation', [
 			[1, 'patient2', 2],
 			[1, 'patient1', 1],
 		])
@@ -255,7 +256,7 @@ public class HaplotypeTest extends DBTest {
 		assertJobTable('job_patient_gene_phenotype', [
 			[1, 'patient1', 'g1', 'homozygote normal'],
 		])
-		assertJobTable('job_patient_drug_recommendation', [
+		assertJobTable('job_patient_phenotype_drug_recommendation', [
 			[1, 'patient1', 1],
 		])
 
@@ -297,7 +298,7 @@ public class HaplotypeTest extends DBTest {
             // from last test's job 1
 			[1, 'patient1', 'g1', 'homozygote normal'],
 		])
-		assertJobTable('job_patient_drug_recommendation', [
+		assertJobTable('job_patient_phenotype_drug_recommendation', [
 			[2, 'patient2', 1],
 			[2, 'patient1', 1],
             // from last test's job 1
@@ -336,11 +337,6 @@ public class HaplotypeTest extends DBTest {
         ]
         insertSampleData(sampleData)
 
-        /* - TODO: test duplicate job_patient_drug_recommendation results found through genotype and 
-         * phenotype based recommendations (implement this as a union of the two stages; may want to 
-         * consider adding an indication of whether drug_recommendations are from phenotype or 
-         * genotype)
-         */
         drugRecommendationsTest(
             ambiguousVariants: false,
             variants: [
@@ -357,13 +353,18 @@ public class HaplotypeTest extends DBTest {
         assertJobTable('job_patient_gene_phenotype', [
             [1, 'patient1', 'g1', 'homozygote normal'],
         ])
-        assertJobTable('job_patient_drug_recommendation', [
-            /* This mapping will be found twice; once from job_patient_genotype (through 
-             * genotype_drug_recommendation) and once from job_patient_gene_phenotype (through 
-             * gene_phenotype_drug_recommendation).  However, we only want it stored once.
-             */
+        /* This mapping will be found twice; once from job_patient_genotype (through 
+         * genotype_drug_recommendation) and once from job_patient_gene_phenotype (through 
+         * gene_phenotype_drug_recommendation).
+         */
+        assertJobTable('job_patient_genotype_drug_recommendation', [
             [1, 'patient1', 1],
         ])
+        assertJobTable('job_patient_phenotype_drug_recommendation', [
+            [1, 'patient1', 1],
+        ])
+
+
 
     }
 
@@ -515,7 +516,7 @@ public class HaplotypeTest extends DBTest {
                 ['patient1', 'g3', '*3', '*4'],
                 // missing g4 *1/*1 needed for drug_recommendation 1
             ])
-        assertJobTable('job_patient_drug_recommendation', [
+        assertJobTable('job_patient_genotype_drug_recommendation', [
             // should be empty
         ])
 
@@ -552,7 +553,7 @@ public class HaplotypeTest extends DBTest {
                 ['patient1', 'g5', '*1', '*1'],
                 // missing g4 *1/*1 needed for drug_recommendation 1
             ])
-        assertJobTable('job_patient_drug_recommendation', [
+        assertJobTable('job_patient_genotype_drug_recommendation', [
             [1, 'patient1', 1],
         ])
 
@@ -585,7 +586,7 @@ public class HaplotypeTest extends DBTest {
                 ['patient1', 'g2', 'homozygote'],
                 // missing g3 heterozygote needed for drug_recommendation 1
             ])
-        assertJobTable('job_patient_drug_recommendation', [
+        assertJobTable('job_patient_phenotype_drug_recommendation', [
             // should be empty
         ])
 
@@ -618,7 +619,7 @@ public class HaplotypeTest extends DBTest {
                 ['patient1', 'g2', 'homozygote'],
                 ['patient1', 'g3', 'heterozygote'],
             ])
-        assertJobTable('job_patient_drug_recommendation', [
+        assertJobTable('job_patient_phenotype_drug_recommendation', [
             [1, 'patient1', 1],
         ])
 

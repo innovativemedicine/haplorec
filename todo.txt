@@ -128,4 +128,5 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
 - fix bug where for phenotypes we only want to do tableA set is contained by tableB set (NOT either or); this failure identified by testGenePhenotype
 - error out when a kwargs is not used to avoid using the wrong name for a dataset?
 
-Questions:
+- make a summary report illustrating how data was obtained from mapping tables in the pipeline
+  - split drug recommendations into phenotype / genotype based

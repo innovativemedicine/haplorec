@@ -166,7 +166,13 @@ CREATE TABLE job_patient_{{table_suffix}} (
 ) {{SQL_ENGINE}};
 {%- endmacro -%}
 
-{% call patient_job_table('drug_recommendation') -%}
+{% call patient_job_table('genotype_drug_recommendation') -%}
+    drug_recommendation_id bigint,
+    unique (job_id, patient_id, drug_recommendation_id),
+    foreign key (drug_recommendation_id) references drug_recommendation(id),
+{%- endcall %}
+
+{% call patient_job_table('phenotype_drug_recommendation') -%}
     drug_recommendation_id bigint,
     unique (job_id, patient_id, drug_recommendation_id),
     foreign key (drug_recommendation_id) references drug_recommendation(id),

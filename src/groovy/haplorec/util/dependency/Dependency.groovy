@@ -60,8 +60,14 @@ class Dependency {
 	
 	Map<Dependency, Integer> levels(Map kwargs = [:]) {
 		if (kwargs.start == null) { kwargs.start = 0 }
-		def lvl = new HashMap()
-		lvls(kwargs.start, this, lvl)
-		return lvl
+        if (kwargs.levels == null) { kwargs.levels = new HashMap() }
+        if (kwargs.startAt == null) { 
+            kwargs.startAt = [this]
+        }
+        kwargs.startAt.each { d ->
+            lvls(kwargs.start, d, kwargs.levels)
+        }
+		return kwargs.levels
 	}
+
 }

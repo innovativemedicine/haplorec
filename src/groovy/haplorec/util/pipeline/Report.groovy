@@ -1,6 +1,7 @@
 package haplorec.util.pipeline
 
 import haplorec.util.Row
+import haplorec.util.Sql
 
 public class Report {
 
@@ -18,30 +19,31 @@ public class Report {
         if (kwargs.fillWith == null) {
             // kwargs.fillWith = null is the default
         }
-        /* TODO: generate these fields using table metadata queried using the Sql module
-         */
-        def aliasToColumns = [
-            dr   : ['id', 'job_id', 'patient_id', 'drug_recommendation_id'],
-            gprd : ['gene_name', 'phenotype_name', 'drug_recommendation_id'],
-            gp   : ['gene_name', 'haplotype_name1', 'haplotype_name2', 'phenotype_name'],
-            ghv  : ['gene_name', 'haplotype_name', 'snp_id', 'allele'],
+        def tables = Sql.tblColumns(sql)
+
+        def tableToAlias = [
+            ( drugRecommendationTable )        : 'dr',
+            gene_phenotype_drug_recommendation : 'gprd',
+            genotype_phenotype                 : 'gp',
+            gene_haplotype_variant             : 'ghv',
         ]
         Set columnsSeen = []
-        def col = { alias ->
-            def cs = []
-            def cols = aliasToColumns[alias]
-            cols.each { col -> 
-                if (!columnsSeen.contains(col)) {
-                    columnsSeen.add(col)
-                    cs.add "$alias.$col"
+        def cols = { table ->
+            def columns = []
+            def alias = tableToAlias[table]
+            tables[table].columns.each { column -> 
+                if (!columnsSeen.contains(column)) {
+                    columnsSeen.add(column)
+                    columns.add "$alias.$column"
                 }
             }
-            return cs
+            return columns
         }
+
         def query = """
         |select
         |
-        |${ aliasToColumns.keySet().collect { alias -> col(alias).join(', ') }.join(',\n') }
+        |${ tableToAlias.keySet().collect { table -> cols(table).join(', ') }.join(',\n') }
         |
         |from ${drugRecommendationTable} dr
         |join gene_phenotype_drug_recommendation gprd using (drug_recommendation_id)
@@ -51,6 +53,7 @@ public class Report {
         |
         |where job_id = :job_id
         |""".stripMargin()[0..-2]
+
         def rows = new Object() {
             def each(Closure f) {
                 if (kwargs.sqlParams != null && kwargs.sqlParams != [:]) {
@@ -69,11 +72,10 @@ public class Report {
             Row.noDuplicates(rows,
                 // GroupName : [[DuplicateKey], [ColumnsToShow]]
                 [
-                    // TODO: replace duplicate keys with primary keys from table metadata
-                    ( drugRecommendationTable )        : [['id'], ['patient_id', 'drug_recommendation_id']],
-                    gene_phenotype_drug_recommendation : [['gene_name', 'phenotype_name', 'drug_recommendation_id'], ['gene_name', 'phenotype_name']],
-                    genotype_phenotype                 : [['gene_name', 'haplotype_name1', 'haplotype_name2'], ['haplotype_name1', 'haplotype_name2']],
-                    gene_haplotype_variant             : [['gene_name', 'haplotype_name', 'snp_id', 'allele'], ['haplotype_name', 'snp_id', 'allele']],
+                    ( drugRecommendationTable )        : [tables[drugRecommendationTable].primaryKey              , ['patient_id', 'drug_recommendation_id']], 
+                    gene_phenotype_drug_recommendation : [tables['gene_phenotype_drug_recommendation'].primaryKey , ['gene_name', 'phenotype_name']],          
+                    genotype_phenotype                 : [tables['genotype_phenotype'].primaryKey                 , ['haplotype_name1', 'haplotype_name2']],   
+                    gene_haplotype_variant             : [tables['gene_haplotype_variant'].primaryKey             , ['haplotype_name', 'snp_id', 'allele']],   
                 ]
             ),
             canCollapse: { header, lastRow, currentRow ->

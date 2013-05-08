@@ -374,6 +374,42 @@ class Sql {
 			cols.collect { r[it] }
 		}
 	}
+
+    private static def columnMetadata(Map kwargs = [:], groovy.sql.Sql sql) {
+        if (kwargs.select == null) { kwargs.select = ['column_name'] }
+		_sql(kwargs, sql.&rows, """\
+			|select ${ kwargs.select.join(', ') }
+			|from information_schema.columns 
+			|where table_schema = database()
+            |""".stripMargin())
+    }
+
+    static def tblColumns(Map kwargs = [:], groovy.sql.Sql sql) {
+        def columns = columnMetadata(sql,
+            select: ['table_name', 'column_name', 'column_key'],
+        )
+        /* tables: [
+         *   table1: [
+         *      columns: [col1, col2, ...],
+         *      primaryKey: [col1, col2],
+         *   ]
+         * ]
+         */
+        def tables = [:]
+        columns.each { r ->
+            if (!tables.containsKey(r.table_name)) {
+                tables[r.table_name] = [
+                    columns: [],
+                    primaryKey: [],
+                ]
+            }
+            tables[r.table_name].columns.add(r.column_name) 
+            if (r.column_key == 'PRI') {
+                tables[r.table_name].primaryKey.add(r.column_name) 
+            }
+        }
+        return tables
+    }
 	
 	static def tableColumns(Map kwargs = [:], groovy.sql.Sql sql, table) {
         kwargs.sqlParams = (kwargs.sqlParams ?: [:]) + [table: table]

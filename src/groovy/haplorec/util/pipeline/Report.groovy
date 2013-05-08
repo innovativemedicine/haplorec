@@ -1,5 +1,7 @@
 package haplorec.util.pipeline
 
+import haplorec.util.Row
+
 public class Report {
 
     static def phenotypeDrugRecommendationReport(Map kwargs = [:], groovy.sql.Sql sql) {
@@ -13,6 +15,9 @@ public class Report {
     /* Return an iterable over a list of rows, where the first row is a header.
      */
     private static def drugRecommendationReport(Map kwargs = [:], drugRecommendationTable, groovy.sql.Sql sql) {
+        if (kwargs.fillWith == null) {
+            // kwargs.fillWith = null is the default
+        }
         /* TODO: generate these fields using table metadata queried using the Sql module
          */
         def aliasToColumns = [
@@ -55,69 +60,62 @@ public class Report {
                 }
             }
         }
-        // return rows
 
-        // TODO: 
-        noDuplicates(rows,
-            // GroupName : [[DuplicateKey], [ColumnsToShow]]
-            [
-                // TODO: replace duplicate keys with primary keys from table metadata
-                ( drugRecommendationTable )        : [['id'], ['patient_id', 'drug_recommendation_id']],
-                gene_phenotype_drug_recommendation : [['gene_name', 'phenotype_name', 'drug_recommendation_id'], ['gene_name', 'phenotype_name']],
-                genotype_phenotype                 : [['gene_name', 'haplotype_name1', 'haplotype_name2'], ['haplotype_name1', 'haplotype_name2']],
-                gene_haplotype_variant             : [['gene_name', 'haplotype_name', 'snp_id', 'allele'], ['haplotype_name', 'snp_id', 'allele']],
-            ],
-            fillDuplicate: kwargs.fillDuplicate,
-        )
+        Row.fill(with: kwargs.fillWith, (Row.collapse(
+            // NOTE: Row.collapse assumes ordering of rows is "correct"; that is, consecutive rows 
+            // that satisfy 'canCollapse' are actually meant to be collapsed.  To enforce this we 
+            // could add an ORDER BY clause to our query but _I_think_ the fetch order ensures it. 
+            // I really ought to double check this...
+            Row.noDuplicates(rows,
+                // GroupName : [[DuplicateKey], [ColumnsToShow]]
+                [
+                    // TODO: replace duplicate keys with primary keys from table metadata
+                    ( drugRecommendationTable )        : [['id'], ['patient_id', 'drug_recommendation_id']],
+                    gene_phenotype_drug_recommendation : [['gene_name', 'phenotype_name', 'drug_recommendation_id'], ['gene_name', 'phenotype_name']],
+                    genotype_phenotype                 : [['gene_name', 'haplotype_name1', 'haplotype_name2'], ['haplotype_name1', 'haplotype_name2']],
+                    gene_haplotype_variant             : [['gene_name', 'haplotype_name', 'snp_id', 'allele'], ['haplotype_name', 'snp_id', 'allele']],
+                ]
+            ),
+            canCollapse: { header, lastRow, currentRow ->
+                /* We can collapse two rows if:
+                 * 1. either of them are empty
+                 * 2. their columns do not overlap
+                 * 3. the index (into the header) of the first column that occurs in currentRow is 
+                 *    after the index of the last column in lastRow
+                 */
 
-    }
+                // 1.
+                if (lastRow == [:] || currentRow == [:]) { return true }
 
-    private static def noDuplicates(Map kwargs = [:], iter, groups) {
-        return new Object() {
-            def each(Closure f) {
-                Map seen = groups.keySet().inject([:]) { m, g -> m[g] = [] as Set; m }
-                iter.each { map ->
-                    def row = [:]
-                    groups.each { g, groupColumns ->
-                        def (duplicateKey, columnsToShow) = groupColumns
-                        def k = duplicateKey.collect { map[it] }
-                        if (!seen[g].contains(k)) {
-                            // add the group g
-                            seen[g].add(k)
-                            columnsToShow.each { row[it] = map[it] }
-                        } else if (kwargs.fillDuplicate != null) {
-                            columnsToShow.each { kwargs.fillDuplicate(row, map, it) }
+                // 2.
+                def intersect = new HashSet(lastRow.keySet())
+                intersect.retainAll(currentRow.keySet())
+                if (intersect.size() != 0) { return false }
+
+                // 3.
+                def idx = { column ->
+                    def i = 0
+                    for (h in header) { 
+                        if (h == column) {
+                            return i
                         }
+                        i += 1
                     }
-                    f(row)
                 }
-            }
-        }
-    }
+                // NOTE: 1. guarantees first and last will get set
+                def first
+                for (entry in currentRow) {
+                    first = entry.key
+                    break
+                }
+                def last
+                for (entry in lastRow) {
+                    last = entry.key
+                }
+                return idx(first) > idx(last)
 
-    private static def asDSV(Map kwargs = [:], iter, Appendable stream) {
-        if (kwargs.separator == null) { kwargs.separator = '\t' }
-        if (kwargs.null == null) { 
-            kwargs.null = { v -> 
-                (v == null) ? '' : v.toString()
-            }
-        }
-        def header
-        def i = 0
-        def output = { r ->
-            stream.append(r.collect() { kwargs.null(it) }.join(kwargs.separator))
-            stream.append(System.getProperty("line.separator"))
-            // r.each {
-            //     stream.append()
-            // }
-        }
-        iter.each { row ->
-            if (i == 0) {
-                header = row.keySet()
-                output(header)
-            }
-            output(header.collect { row[it] })
-        }
+            },
+        )))
     }
 
 }

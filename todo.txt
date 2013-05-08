@@ -162,5 +162,21 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
     - one for phenotype
     - one for genotype
     - kinda did this, minus querying table metadata (it's hardcoded)
-  - create a function that wraps the row results and eliminates duplicity that we don't want
+      - since we're only using the mapping tables:
+        - this doesn't necessarily correspond to data that was input (IF they're using more input than just variants) since 
+        - some data won't be repeated as I might expect (for good or bad, depends on what they expect) (e.g. genotype *1/*1 gets its haplotype 
+          shown only once due to join condition, but could be remedied by joining against input variants)
+        [o] next step we want to do is "collapsing" consecutive rows with blanks, for e.g. in samplejob_noduplicate_phenotype.txt we have:
+
+        patient2   | 2                      | g1        | heterozygote      | *1              | *2              | _              | _      | _
+        _          | _                      | _         | _                 | _               | _               | _              | _      | _
+        _          | _                      | _         | _                 | _               | _               | *2             | rs3    | C
+        _          | _                      | _         | _                 | _               | _               | *2             | rs4    | T
+
+        [o] after collapsing, we want:
+
+        patient2   | 2                      | g1        | heterozygote      | *1              | *2              | *2             | rs3    | C
+        _          | _                      | _         | _                 | _               | _               | *2             | rs4    | T
+
+  ~ create a function that wraps the row results and eliminates duplicity that we don't want
     - in Sql module, create a function for getting table primary key metadata: [ table : [primary key] ]

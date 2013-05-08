@@ -182,3 +182,4 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
     [o] in Sql module, create a function for getting table primary key metadata: [ table : [primary key] ]
 
 - make sure dependency graph stuff works for 2 base nodes (i know level() won't work =z)
+- fix broken Report tests due to Row refactoring, then go make wui work with new levels

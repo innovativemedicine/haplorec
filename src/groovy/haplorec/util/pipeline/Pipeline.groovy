@@ -183,16 +183,9 @@ public class Pipeline {
     static def dependencyGraph(Map kwargs = [:]) {
 		if (kwargs.ambiguousVariants == null) { kwargs.ambiguousVariants = true }
 
-        // default job_* tables
-        // dependency target -> sql table
-		def tbl = new LinkedHashMap(defaultTables)
-		if (kwargs.ambiguousVariants) {
-			tbl.variant = ambiguousVariants
-		} else {
-			tbl.variant = unambiguousVariants
-		}
+        def tbl = tables(kwargs)
 
-        def builder = new HaplotypeDependencyGraphBuilder()
+        def builder = new PipelineDependencyGraphBuilder()
         Map dependencies = [:]
         def canUpload = { d -> PipelineInput.inputTables.contains(d) }
 
@@ -227,6 +220,19 @@ public class Pipeline {
             }
         }
         return [tbl, dependencies]
+    }
+
+    static def tables(Map kwargs = [:]) {
+		if (kwargs.ambiguousVariants == null) { kwargs.ambiguousVariants = true }
+        // default job_* tables
+        // dependency target -> sql table
+		def tbl = new LinkedHashMap(defaultTables)
+		if (kwargs.ambiguousVariants) {
+			tbl.variant = ambiguousVariants
+		} else {
+			tbl.variant = unambiguousVariants
+		}
+        return tbl
     }
 	
     // TODO: accept jobId to rerun parts of the pipeline 

@@ -183,3 +183,5 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
 
 - make sure dependency graph stuff works for 2 base nodes (i know level() won't work =z)
 - fix broken Report tests due to Row refactoring, then go make wui work with new levels
+- join drug_recommendation stuff
+- make Report functions know what default table names are

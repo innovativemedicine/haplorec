@@ -2,8 +2,8 @@ package haplorec.util.pipeline
 
 import haplorec.util.dependency.DependencyGraphBuilder;
 
-class HaplotypeDependencyGraphBuilder extends DependencyGraphBuilder {
-	public HaplotypeDependencyGraphBuilder() {
+class PipelineDependencyGraphBuilder extends DependencyGraphBuilder {
+	public PipelineDependencyGraphBuilder() {
 		super()
 //			this.classNameResolver = "haplorec.util.Pipeline.Dependency"
 //			this.classNameResolver = haplorec.util.Pipeline.Dependency

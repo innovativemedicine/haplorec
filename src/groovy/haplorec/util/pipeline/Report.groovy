@@ -6,10 +6,12 @@ import haplorec.util.Sql
 public class Report {
 
     static def phenotypeDrugRecommendationReport(Map kwargs = [:], groovy.sql.Sql sql) {
+        kwargs += Pipeline.tables(kwargs)
         drugRecommendationReport(kwargs, kwargs.phenotypeDrugRecommendation, sql)
     }
 
     static def genotypeDrugRecommendationReport(Map kwargs = [:], groovy.sql.Sql sql) {
+        kwargs += Pipeline.tables(kwargs)
         drugRecommendationReport(kwargs, kwargs.genotypeDrugRecommendation, sql)
     }
 
@@ -23,6 +25,7 @@ public class Report {
 
         def tableToAlias = [
             ( drugRecommendationTable )        : 'dr',
+            drug_recommendation                : 'd',
             gene_phenotype_drug_recommendation : 'gprd',
             genotype_phenotype                 : 'gp',
             gene_haplotype_variant             : 'ghv',
@@ -46,6 +49,7 @@ public class Report {
         |${ tableToAlias.keySet().collect { table -> cols(table).join(', ') }.join(',\n') }
         |
         |from ${drugRecommendationTable} dr
+        |join drug_recommendation d on (dr.drug_recommendation_id = d.id)
         |join gene_phenotype_drug_recommendation gprd using (drug_recommendation_id)
         |join genotype_phenotype gp using (gene_name, phenotype_name)
         |join gene_haplotype_variant ghv on (ghv.gene_name = gp.gene_name and ghv.haplotype_name = gp.haplotype_name1) or
@@ -72,10 +76,11 @@ public class Report {
             Row.noDuplicates(rows,
                 // GroupName : [[DuplicateKey], [ColumnsToShow]]
                 [
-                    ( drugRecommendationTable )        : [tables[drugRecommendationTable].primaryKey              , ['patient_id', 'drug_recommendation_id']], 
-                    gene_phenotype_drug_recommendation : [tables['gene_phenotype_drug_recommendation'].primaryKey , ['gene_name', 'phenotype_name']],          
-                    genotype_phenotype                 : [tables['genotype_phenotype'].primaryKey                 , ['haplotype_name1', 'haplotype_name2']],   
-                    gene_haplotype_variant             : [tables['gene_haplotype_variant'].primaryKey             , ['haplotype_name', 'snp_id', 'allele']],   
+                    ( drugRecommendationTable )        :  [tables[drugRecommendationTable].primaryKey              , ['patient_id', 'drug_recommendation_id']],
+                    drug_recommendation                :  [tables['drug_recommendation'].primaryKey                , ['drug_name', 'recommendation']],
+                    gene_phenotype_drug_recommendation :  [tables['gene_phenotype_drug_recommendation'].primaryKey , ['gene_name', 'phenotype_name']],
+                    genotype_phenotype                 :  [tables['genotype_phenotype'].primaryKey                 , ['haplotype_name1', 'haplotype_name2']],
+                    gene_haplotype_variant             :  [tables['gene_haplotype_variant'].primaryKey             , ['haplotype_name', 'snp_id', 'allele']],
                 ]
             ),
             canCollapse: { header, lastRow, currentRow ->

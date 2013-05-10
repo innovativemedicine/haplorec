@@ -2,60 +2,100 @@ package haplorec.util.pipeline
 
 import haplorec.util.Row
 import haplorec.util.Sql
+import static haplorec.util.Sql._
 
 public class Report {
 
     static def phenotypeDrugRecommendationReport(Map kwargs = [:], groovy.sql.Sql sql) {
         kwargs += Pipeline.tables(kwargs)
-        drugRecommendationReport(kwargs, kwargs.phenotypeDrugRecommendation, sql)
+        condensedJoin(sql,
+            fillWith: kwargs.fillWith,
+            select: [
+                ( kwargs.phenotypeDrugRecommendation ) : ['patient_id', 'drug_recommendation_id'],
+                drug_recommendation                    : ['drug_name', 'recommendation'],
+                gene_phenotype_drug_recommendation     : ['gene_name', 'phenotype_name'],
+                genotype_phenotype                     : ['haplotype_name1', 'haplotype_name2'],
+                gene_haplotype_variant                 : ['haplotype_name', 'snp_id', 'allele'],
+            ],
+            join: [
+                drug_recommendation                    : "on (jppdr.drug_recommendation_id = dr.id)",
+                gene_phenotype_drug_recommendation     : "using (drug_recommendation_id)",
+                genotype_phenotype                     : "using (gene_name, phenotype_name)",
+                gene_haplotype_variant                 : """on (ghv.gene_name = gp.gene_name and ghv.haplotype_name = gp.haplotype_name1) or
+                                                               (ghv.gene_name = gp.gene_name and ghv.haplotype_name = gp.haplotype_name2)""",
+            ],
+            where: "job_id = :job_id",
+            sqlParams: kwargs.sqlParams)
     }
 
     static def genotypeDrugRecommendationReport(Map kwargs = [:], groovy.sql.Sql sql) {
         kwargs += Pipeline.tables(kwargs)
-        drugRecommendationReport(kwargs, kwargs.genotypeDrugRecommendation, sql)
+        condensedJoin(sql,
+            fillWith: kwargs.fillWith,
+            select: [
+                ( kwargs.genotypeDrugRecommendation ) : ['patient_id', 'drug_recommendation_id'],
+                drug_recommendation                   : ['drug_name', 'recommendation'],
+                genotype_drug_recommendation          : ['gene_name', 'haplotype_name1', 'haplotype_name2'],
+                gene_haplotype_variant                : ['haplotype_name', 'snp_id', 'allele'],
+            ],
+            join: [
+                drug_recommendation          : "on (jpgdr.drug_recommendation_id = dr.id)",
+                genotype_drug_recommendation : "using (drug_recommendation_id)",
+                gene_haplotype_variant       : """on (ghv.gene_name = gdr.gene_name and ghv.haplotype_name = gdr.haplotype_name1) or
+                                                     (ghv.gene_name = gdr.gene_name and ghv.haplotype_name = gdr.haplotype_name2)""",
+            ],
+            where: "job_id = :job_id",
+            sqlParams: kwargs.sqlParams)
+    }
+
+    private static def aliafy(table) {
+        table.replaceAll(
+            /(:?^|_)(\w)[^_]*/, 
+            { 
+                it[2].toLowerCase() 
+            })
     }
 
     /* Return an iterable over a list of rows, where the first row is a header.
      */
-    private static def drugRecommendationReport(Map kwargs = [:], drugRecommendationTable, groovy.sql.Sql sql) {
+    private static def condensedJoin(Map kwargs = [:], groovy.sql.Sql sql) {
         if (kwargs.fillWith == null) {
             // kwargs.fillWith = null is the default
         }
         def tables = Sql.tblColumns(sql)
 
-        def tableToAlias = [
-            ( drugRecommendationTable )        : 'dr',
-            drug_recommendation                : 'd',
-            gene_phenotype_drug_recommendation : 'gprd',
-            genotype_phenotype                 : 'gp',
-            gene_haplotype_variant             : 'ghv',
-        ]
+        /* Table name to alias mapping.
+         */
+        def alias = kwargs.select.keySet().inject([:]) { m, table -> m[table] = aliafy(table); m }
+        /* Alias to table mapping.
+         */
+        def aliasToTable = alias.keySet().inject([:]) { m, k -> m[alias[k]] = k; m }
+
         Set columnsSeen = []
         def cols = { table ->
             def columns = []
-            def alias = tableToAlias[table]
             tables[table].columns.each { column -> 
                 if (!columnsSeen.contains(column)) {
                     columnsSeen.add(column)
-                    columns.add "$alias.$column"
+                    columns.add "${alias[table]}.$column"
                 }
             }
             return columns
         }
 
+        def joinTables = kwargs.join.keySet()
+        def tablesNotInJoin = new HashSet(kwargs.select.keySet())
+        tablesNotInJoin.removeAll(joinTables)
+        if (tablesNotInJoin.size() != 1) {
+            throw new IllegalArgumentException("There must be exactly one table without a join clause, but saw ${tablesNotInJoin.size()} such tables: ${tablesNotInJoin}")
+        }
+        def tableNotInJoin = tablesNotInJoin.iterator().next()
         def query = """
         |select
-        |
-        |${ tableToAlias.keySet().collect { table -> cols(table).join(', ') }.join(',\n') }
-        |
-        |from ${drugRecommendationTable} dr
-        |join drug_recommendation d on (dr.drug_recommendation_id = d.id)
-        |join gene_phenotype_drug_recommendation gprd using (drug_recommendation_id)
-        |join genotype_phenotype gp using (gene_name, phenotype_name)
-        |join gene_haplotype_variant ghv on (ghv.gene_name = gp.gene_name and ghv.haplotype_name = gp.haplotype_name1) or
-        |                                   (ghv.gene_name = gp.gene_name and ghv.haplotype_name = gp.haplotype_name2)
-        |
-        |where job_id = :job_id
+        |${ kwargs.select.keySet().collect { table -> cols(table).join(', ') }.join(',\n') }
+        |from 
+        |${ ( ["$tableNotInJoin ${alias[tableNotInJoin]}"] + kwargs.join.collect { "${it.key} ${alias[it.key]} ${it.value}" } ).join('\njoin ') }
+        |${ _(kwargs.where, return: { "where $it" }) }
         |""".stripMargin()[0..-2]
 
         def rows = new Object() {
@@ -75,13 +115,11 @@ public class Report {
             // I really ought to double check this...
             Row.noDuplicates(rows,
                 // GroupName : [[DuplicateKey], [ColumnsToShow]]
-                [
-                    ( drugRecommendationTable )        :  [tables[drugRecommendationTable].primaryKey              , ['patient_id', 'drug_recommendation_id']],
-                    drug_recommendation                :  [tables['drug_recommendation'].primaryKey                , ['drug_name', 'recommendation']],
-                    gene_phenotype_drug_recommendation :  [tables['gene_phenotype_drug_recommendation'].primaryKey , ['gene_name', 'phenotype_name']],
-                    genotype_phenotype                 :  [tables['genotype_phenotype'].primaryKey                 , ['haplotype_name1', 'haplotype_name2']],
-                    gene_haplotype_variant             :  [tables['gene_haplotype_variant'].primaryKey             , ['haplotype_name', 'snp_id', 'allele']],
-                ]
+                kwargs.select.inject([:]) { m, pair ->
+                    def (table, columns) = [pair.key, pair.value]
+                    m[table] = [tables[table].primaryKey, columns]
+                    return m
+                }
             ),
             canCollapse: { header, lastRow, currentRow ->
                 /* We can collapse two rows if:

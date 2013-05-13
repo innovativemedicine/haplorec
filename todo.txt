@@ -185,3 +185,8 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
 - fix broken Report tests due to Row refactoring, then go make wui work with new levels
 - join drug_recommendation stuff
 - make Report functions know what default table names are
+
+- report output is incorrect, since it joins only against mapping tables, it will output all the 
+  many's in a one-to-many join instead of restricting it to just the many that we saw in the 
+  pipeline table.
+

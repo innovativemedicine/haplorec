@@ -18,13 +18,16 @@ public class Report {
                 gene_haplotype_variant                 : ['haplotype_name', 'snp_id', 'allele'],
             ],
             join: [
-                drug_recommendation                    : "on (jppdr.drug_recommendation_id = dr.id)",
-                gene_phenotype_drug_recommendation     : "using (drug_recommendation_id)",
-                genotype_phenotype                     : "using (gene_name, phenotype_name)",
-                gene_haplotype_variant                 : """on (ghv.gene_name = gp.gene_name and ghv.haplotype_name = gp.haplotype_name1) or
-                                                               (ghv.gene_name = gp.gene_name and ghv.haplotype_name = gp.haplotype_name2)""",
+                drug_recommendation                : [ "join", "on (jppdr.drug_recommendation_id = dr.id)"],
+                gene_phenotype_drug_recommendation : ["join", "using (drug_recommendation_id)"],
+                ( kwargs.genePhenotype )           : ["left join", "using (gene_name, phenotype_name) "],
+                genotype_phenotype                 : ["join", "using (gene_name, phenotype_name)"],
+                ( kwargs.genotype )                : ["left join", "using (haplotype_name1, haplotype_name2) "],
+                gene_haplotype_variant             : ["join", "on (ghv.gene_name = jpg.gene_name and ghv.haplotype_name = jpg.haplotype_name1) or (ghv.gene_name = jpg.gene_name and ghv.haplotype_name = jpg.haplotype_name2)"],
+                ( kwargs.geneHaplotype )           : ["left join", "on (ghv.gene_name = jpgh.gene_name) and (ghv.haplotype_name = jpgh.haplotype_name)"],
+                ( kwargs.variant )                 : ["left join", "using (snp_id, allele)"],
             ],
-            where: "job_id = :job_id",
+            where: "jppdr.job_id = :job_id",
             sqlParams: kwargs.sqlParams)
     }
 
@@ -39,12 +42,15 @@ public class Report {
                 gene_haplotype_variant                : ['haplotype_name', 'snp_id', 'allele'],
             ],
             join: [
-                drug_recommendation          : "on (jpgdr.drug_recommendation_id = dr.id)",
-                genotype_drug_recommendation : "using (drug_recommendation_id)",
-                gene_haplotype_variant       : """on (ghv.gene_name = gdr.gene_name and ghv.haplotype_name = gdr.haplotype_name1) or
-                                                     (ghv.gene_name = gdr.gene_name and ghv.haplotype_name = gdr.haplotype_name2)""",
+                drug_recommendation          : [ "join", "on (jpgdr.drug_recommendation_id = dr.id)"],
+                genotype_drug_recommendation : ["join", "using (drug_recommendation_id)"],
+                // same as above, minus kwargs.genePhenotype and genotype_phenotype
+                ( kwargs.genotype )          : ["left join", "using (haplotype_name1, haplotype_name2) "],
+                gene_haplotype_variant       : ["join", "on (ghv.gene_name = jpg.gene_name and ghv.haplotype_name = jpg.haplotype_name1) or (ghv.gene_name = jpg.gene_name and ghv.haplotype_name = jpg.haplotype_name2)"],
+                ( kwargs.geneHaplotype )     : ["left join", "on (ghv.gene_name = jpgh.gene_name) and (ghv.haplotype_name = jpgh.haplotype_name)"],
+                ( kwargs.variant )           : ["left join", "using (snp_id, allele)"],
             ],
-            where: "job_id = :job_id",
+            where: "jpgdr.job_id = :job_id",
             sqlParams: kwargs.sqlParams)
     }
 
@@ -66,7 +72,7 @@ public class Report {
 
         /* Table name to alias mapping.
          */
-        def alias = kwargs.select.keySet().inject([:]) { m, table -> m[table] = aliafy(table); m }
+        def alias = ( kwargs.select.keySet() + kwargs.join.keySet() ).inject([:]) { m, table -> m[table] = aliafy(table); m }
         /* Alias to table mapping.
          */
         def aliasToTable = alias.keySet().inject([:]) { m, k -> m[alias[k]] = k; m }
@@ -90,11 +96,12 @@ public class Report {
             throw new IllegalArgumentException("There must be exactly one table without a join clause, but saw ${tablesNotInJoin.size()} such tables: ${tablesNotInJoin}")
         }
         def tableNotInJoin = tablesNotInJoin.iterator().next()
+        
         def query = """
         |select
         |${ kwargs.select.keySet().collect { table -> cols(table).join(', ') }.join(',\n') }
         |from 
-        |${ ( ["$tableNotInJoin ${alias[tableNotInJoin]}"] + kwargs.join.collect { "${it.key} ${alias[it.key]} ${it.value}" } ).join('\njoin ') }
+        |${ ( ["$tableNotInJoin ${alias[tableNotInJoin]}"] + kwargs.join.collect { "${it.value[0]} ${it.key} ${alias[it.key]} ${it.value[1]}" } ).join('\n') }
         |${ _(kwargs.where, return: { "where $it" }) }
         |""".stripMargin()[0..-2]
 

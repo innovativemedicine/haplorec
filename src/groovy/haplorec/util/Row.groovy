@@ -210,4 +210,20 @@ class Row {
         }
     }
 
+    static def filter(Map kwargs = [:], iter) {
+        return new Object() {
+            def each(Closure f) {
+                iter.each { row ->
+                    Map r = kwargs.keep.inject([:]) { m, k ->
+                        if (row.containsKey(k)) {
+                            m[k] = row[k]
+                        }
+                        m
+                    }
+                    f(r)
+                }
+            }
+        }
+    }
+
 }

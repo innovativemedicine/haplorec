@@ -189,4 +189,52 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
 - report output is incorrect, since it joins only against mapping tables, it will output all the 
   many's in a one-to-many join instead of restricting it to just the many that we saw in the 
   pipeline table.
+- report should only prevent "repeated data" for the same patient; different patient should have variant data "repeated"
+- only use job_patient_* tables in report select, and remove duplicates by THEIR ids
+- remote duplicates isn't going to work since we can't handle duplicate column names properly (the rows returned only have one 'id')
+- fix duplicate groupings such that:
+  - we don't repeat a haplotype for the same patient
+    - job_patient_gene_haplotype dupkey should be (job_id, patient_id, gene_name, haplotype_name)
+  - we repeat variants for the same patient but a different haplotype (but we don't repeat variants with the same allele and snp_id but only a different zygosity)
+    - job_patient_variant dupkey should be (job_id, patient_id, gene_name, haplotype_name, allele, snp_id)
+- add alterative header (do this via toDSV... i think)
+- why aren't phenotype rows collapsing?
 
+- figure out why stuff isn't condensing
+- it's because we have multiple genotype's (g1 *1/*2, *1/*3) mapping to the same phenotype (heterozygote) in gene_phenotype, but since we do left joins, we end up keeping the row
+  - we can get rid of the non-existant genotype by doing "join job_patient_genotype" instead of "left join", but this means that if the user manually added a phenotype for which a genotype wasn't found, then that drug recommendation wouldn't be reported
+  - perhaps we can get rid of them through the where clause
+    - what do the bad rows look like?
+
+select
+
+*
+
+from
+
+job_patient_phenotype_drug_recommendation jppdr
+left join drug_recommendation dr on (jppdr.drug_recommendation_id = dr.id)
+left join gene_phenotype_drug_recommendation gpdr using (drug_recommendation_id)
+left join job_patient_gene_phenotype jpgp using (job_id, patient_id, gene_name, phenotype_name)
+left join genotype_phenotype gp using (gene_name, phenotype_name)
+join job_patient_genotype jpg using (job_id, patient_id, haplotype_name1, haplotype_name2)
+-- left join job_patient_gene_haplotype jpgh                     on (
+--                         jpgh.job_id = jpg.job_id and
+--                         jpgh.patient_id = jpg.patient_id and
+--                         jpgh.gene_name = jpg.gene_name and
+--                         jpgh.haplotype_name = jpg.haplotype_name1
+--                        ) or (
+--                         jpgh.job_id = jpg.job_id and
+--                         jpgh.patient_id = jpg.patient_id and
+--                         jpgh.gene_name = jpg.gene_name and
+--                         jpgh.haplotype_name = jpg.haplotype_name2
+--                        )
+-- left join gene_haplotype_variant ghv                     on ghv.gene_name = jpgh.gene_name and
+--                        ghv.haplotype_name = jpgh.haplotype_name
+-- 
+-- left join job_patient_variant jpv                     on jpv.patient_id = jpgh.patient_id and
+--                        jpv.job_id = jpgh.job_id and
+--                        jpv.snp_id = ghv.snp_id and
+--                        jpv.allele = ghv.allele
+
+where jppdr.job_id = 1 and jppdr.patient_id = 'patient2'

@@ -422,4 +422,32 @@ class Sql {
 			['column_name']).collect { it[0] }
 	}
 
+    /* Wrapper for Sql.eachRow that replaces columns at positions 0..n with kwargs.names 0..n
+    */
+    static def rows(Map kwargs = [:], groovy.sql.Sql sql, query) {
+        new Object() {
+            def each(Closure f) {
+
+                def eachRow
+                if (kwargs.names != null) {
+                    eachRow = { row ->
+                        Map mapRow = [:]
+                        (0..row.getMetaData().getColumnCount()-1).each { i ->
+                            mapRow[kwargs.names[i]] = row[i]
+                        }
+                        f(mapRow)
+                    }
+                } else {
+                    eachRow = f
+                }
+
+                if (kwargs.sqlParams != null && kwargs.sqlParams != [:]) {
+                    sql.eachRow(query, kwargs.sqlParams, eachRow) 
+                } else {
+                    sql.eachRow(query, eachRow)
+                }
+            }
+        }    
+    }
+
 }

@@ -202,9 +202,23 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
 
 - figure out why stuff isn't condensing
 - it's because we have multiple genotype's (g1 *1/*2, *1/*3) mapping to the same phenotype (heterozygote) in gene_phenotype, but since we do left joins, we end up keeping the row
-  - we can get rid of the non-existant genotype by doing "join job_patient_genotype" instead of "left join", but this means that if the user manually added a phenotype for which a genotype wasn't found, then that drug recommendation wouldn't be reported
+  - we can get rid of the non-existent genotype by doing "join job_patient_genotype" instead of "left join", but this means that if the user manually added a phenotype 
+    for which a genotype wasn't found, then that drug recommendation wouldn't be reported (confirmed)
   - perhaps we can get rid of them through the where clause
-    - what do the bad rows look like?
+    - what do the bad rows look like? can we distinguish them from rows where a job_patient_phenotype was added
+      - they are groups of patient rows where one row has a phenotype with a genotype, and the other have the same phenotype but no matching genotype
+  - perhaps we can change the collapsing strategy
+  - perhaps we can consider them as duplicates; (job_id, patient_id, phenotype_name); no it'll arbitrarily remove rows (might leave the null one)
+  - root of the problem: trying to resolve the many in a many-to-one mapping using just the one...
+    - solutions: 
+      - make it one-to-one (involves changing a bunch of stuff)
+      - custom collapsing strategy
+        - collapse rows with the same phenotype if there is exactly one row with a genotype for that phenotype
+        - can't we just remove the null-valued entries...?
+          - use a debugger to figure out why this isn't working
+        - duplicate removal ensures that rows with null's for their primary key will get removed, which ensures that there will only be one row for all the failed 
+          genotype_p
+
 
 select
 

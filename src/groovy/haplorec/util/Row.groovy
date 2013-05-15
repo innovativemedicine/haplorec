@@ -76,6 +76,11 @@ class Row {
                 intersect.size() == 0
             }
         }
+        if (kwargs.collapse == null) {
+            kwargs.collapse = { header, lastRow, currentRow ->
+                lastRow.putAll(currentRow)
+            }
+        }
         return new Object() {
             def each(Closure f) {
                 /* Pseudocode:
@@ -100,7 +105,11 @@ class Row {
                         // try merging r into lastRow 
                         if (kwargs.canCollapse(header, lastRow, row)) {
                             // the two rows have no columns that overlap, we can merge them
-                            lastRow.putAll(row)
+                            def r = kwargs.collapse(header, lastRow, row)
+                            if (r instanceof Map) {
+                                // collapse generated the new last row (instead of just modifying lastRow)
+                                lastRow = r
+                            }
                         } else {
                             // the two rows have columns that overlap; handle the lastRow
                             f(lastRow)
@@ -124,8 +133,22 @@ class Row {
      * that returns the value to store at row[column]
      */
     static def fill(Map kwargs = [:], iter) {
+        def with
         if (kwargs.with == null) {
             // kwargs.with = null is the default
+            with = { row, column -> null }
+        } else if (kwargs.with instanceof Closure) {
+            with = kwargs.with
+        } else {
+            with = { row, column -> kwargs.with }
+        }
+        def replace
+        if (kwargs.replace == null) {
+            replace = { row, column ->
+                !row.containsKey(column)
+            }
+        } else {
+            replace = kwargs.replace
         }
         return new Object() {
             def each(Closure f) {
@@ -135,15 +158,9 @@ class Row {
                     if (i == 0) {
                         header = row.keySet()
                     }
-                    Set missing = new HashSet(header)
-                    missing.removeAll(row.keySet())
-                    if (kwargs instanceof Closure) {
-                        missing.each { c ->
-                            row[c] = kwargs.with(row, c)
-                        }
-                    } else {
-                        missing.each { c ->
-                            row[c] = kwargs.with
+                    header.each { c ->
+                        if (replace(row, c)) {
+                            row[c] = with(row, c)
                         }
                     }
                     f(row)
@@ -221,6 +238,34 @@ class Row {
                         m
                     }
                     f(r)
+                }
+            }
+        }
+    }
+
+    static def changeKeys(Map kwargs = [:], iter) {
+        if (kwargs.to == null) {
+            kwargs.to = { header, h -> h }
+        }
+        return eachRow(iter) { header, row, _ ->
+            row.keySet().inject([:]) { m, k ->
+                m[kwargs.to(header, k)] = row[k]
+                m
+            }
+        }
+    }
+
+    static def eachRow(iter, Closure f) {
+        return new Object() {
+            def each(Closure g) {
+                def i = 0
+                def header
+                iter.each { row ->
+                    if (i == 0) {
+                        header = row.keySet()
+                    }
+                    g(f(header, row, i))
+                    i += 1
                 }
             }
         }

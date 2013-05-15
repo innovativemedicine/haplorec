@@ -4,13 +4,14 @@ import haplorec.util.Row
 
 class RowTest extends GroovyTestCase {
 
+    def rows(iter) {
+        def xs = []
+        iter.each { xs.add it }
+        xs
+    }
+
     def noDuplicatesTest(iter, groups, expectedRows) {
-        def collect = { iterator ->
-            def xs = []
-            iterator.each { xs.add it }
-            xs
-        }
-        assertEquals( expectedRows , collect( Row.noDuplicates(iter, groups) ) )
+        assertEquals( expectedRows , rows( Row.noDuplicates(iter, groups) ) )
     }
 
     void testNoDuplicates() {
@@ -36,6 +37,90 @@ class RowTest extends GroovyTestCase {
                 [:],
                 [:],
             ])
+    }
+
+    def collapseTest(Map kwargs = [:], iter, expectedRows) {
+        assertEquals( expectedRows , rows( Row.collapse(kwargs, iter) ) )
+    }
+
+    void testCollapse() {
+
+        collapseTest(
+            [
+                [a: 1, b: 2, c: 3],
+                [            c: 3],
+                [a: 1, b: 2      ],
+            ],
+            [
+                [a: 1, b: 2, c: 3],
+                [a: 1, b: 2, c: 3],
+            ])
+
+        collapseTest(
+            [
+                [a: 1, b: 2, c: 3],
+                [            c: 3],
+                [a: 1, b: 2, c: null],
+            ],
+            [
+                [a: 1, b: 2, c: 3],
+                [            c: 3],
+                [a: 1, b: 2, c: null],
+            ])
+
+        def nonNullKeys = { map -> 
+            map.keySet().grep { k -> map[k] != null } 
+        }
+
+        collapseTest(
+            canCollapse: { header, lastRow, currentRow ->
+                // 2.
+                def intersect = new HashSet(nonNullKeys(lastRow))
+                intersect.retainAll(nonNullKeys(currentRow))
+                return intersect.size() == 0
+            },
+            collapse: { header, lastRow, currentRow ->
+                header.each { h ->
+                    if (lastRow[h] == null) {
+                        lastRow[h] = currentRow[h]
+                    }
+                }
+            },
+            [
+                [a: 1, b: 2, c: 3],
+                [            c: 3],
+                [a: 1, b: 2, c: null],
+            ],
+            [
+                [a: 1, b: 2, c: 3],
+                [a: 1, b: 2, c: 3],
+            ])
+
+
+        collapseTest(
+            canCollapse: { header, lastRow, currentRow ->
+                // 2.
+                def intersect = new HashSet(nonNullKeys(lastRow))
+                intersect.retainAll(nonNullKeys(currentRow))
+                return intersect.size() == 0
+            },
+            collapse: { header, lastRow, currentRow ->
+                header.each { h ->
+                    if (lastRow[h] == null) {
+                        lastRow[h] = currentRow[h]
+                    }
+                }
+            },
+            [
+                [a: 1, b: 2, c: 3],
+                [a: 1, b: 2, c: null],
+                [            c: 3],
+            ],
+            [
+                [a: 1, b: 2, c: 3],
+                [a: 1, b: 2, c: 3],
+            ])
+
     }
 
 }

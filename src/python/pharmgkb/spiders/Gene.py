@@ -16,7 +16,11 @@ class GeneSpider(BaseSpider):
     def parse(self, response):
         hxs = HtmlXPathSelector(response)
         gene_name = re.search(r'^(.*)\s*\[PharmGKB\]$', hxs.select('//title/text()')[0].extract()).group(1).rstrip()
-        t = parsers.table(hxs.select('//div[@id="tabHaplotypes"]/article[@class="HaplotypeSet"]/*/table')[0])
+        t_xs = hxs.select('//div[@id="tabHaplotypes"]/article[@class="HaplotypeSet"]/*/table')
+        if t_xs == []:
+            # this gene has no "Haplotypes" tab on its page, so skip it
+            return
+        t = parsers.table(t_xs[0])
         header = t.next()
         snp_ids = header.select('text() | a/text()')[1:].extract()
         alleles = {}

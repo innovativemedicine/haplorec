@@ -236,7 +236,6 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
         - yes, "wget -r" it then run a local web server
 - create a web crawler to extract pharmgkb data
   - crawl out from cpicGeneDrugPairs to the gene pages
-    - extract gene-haplotype matrices from gene pages
-      - convert to gene-haplotype matrices to table data using gene_haplotype_matrix_to_table.py
+    [o] extract gene-haplotype matrices from gene pages
       - gather a list of snp_ids for each gene, and ask lars for genotyping data sample file that uses these snp_ids (it has to be all of them for a 
         gene...otherwise we need to select a subset of snps to care about for each gene)

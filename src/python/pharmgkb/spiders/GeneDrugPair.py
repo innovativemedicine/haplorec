@@ -1,30 +1,19 @@
-from scrapy.spider import BaseSpider
+# from scrapy.contrib.spiders.crawl import CrawlSpider, Rule
+from scrapy.contrib.spiders import CrawlSpider, Rule
+from scrapy.contrib.linkextractors.sgml import SgmlLinkExtractor
+# from scrapy.spider import CrawlSpider
 from scrapy.selector import HtmlXPathSelector
-from pharmgkb import items
-from pharmgkb import parsers
+from pharmgkb import items, parsers, spiders
 
-class GeneDrugPairSpider(BaseSpider):
+class GeneDrugPairSpider(CrawlSpider):
     name = "GeneDrugPair"
     # allowed_domains = ["pharmgkb.org"]
+    rules = (
+        Rule(SgmlLinkExtractor(restrict_xpaths='//div[@id="cpicGeneDrugPairsContent"]/table',
+                               allow=( r'/gene/', )), 
+             callback=spiders.as_func(spiders.Gene.GeneSpider)),
+    )
 
-    def __init__(self, start_url='http://www.pharmgkb.org/page/cpicGeneDrugPairs'):
+    def __init__(self, start_url='http://www.pharmgkb.org/page/cpicGeneDrugPairs', *a, **kw):
         self.start_urls = (start_url,)
-
-    def parse(self, response):
-        hxs = HtmlXPathSelector(response)
-        t = parsers.table(hxs.select('//div[@id="cpicGeneDrugPairsContent"]/table'))
-        header = t.next()
-        for row in t:
-            genes = row[0].select('a[starts-with(@href, "/gene")]')
-            drugs = row[0].select('a[starts-with(@href, "/drug")]')
-            yield items.GeneDrugPairItem(
-                    gene_drug_pairs = (
-                        genes.select('text()').extract(), 
-                        drugs.select('text()').extract(), 
-                    ),
-                    # status = ,
-                    # author_contact = ,
-                    # others_involved = ,
-                    # publication_link = ,
-                    # update = ,
-                    )
+        super(GeneDrugPairSpider, self).__init__(*a, **kw)

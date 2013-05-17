@@ -16,3 +16,7 @@ NEWSPIDER_MODULE = 'pharmgkb.spiders'
 
 # use a delay to prevent hitting the pharmgkb server too hard
 DOWNLOAD_DELAY = 1 
+
+ITEM_PIPELINES = [
+        'pharmgkb.pipelines.CsvPipeline',
+]

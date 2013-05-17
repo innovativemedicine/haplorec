@@ -219,6 +219,9 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
         - duplicate removal ensures that rows with null's for their primary key will get removed, which ensures that there will only be one row for all the failed 
           genotype_p
 
+- ask andrea about tools for disambiguating which alleles in heterozygous snps 
+  occur on the same physical chromosome
+
 - create sample using real data
   - use CYP2C19 data from aaron
     - there is no overlap between snp_id's in CYP2C19_haplotype_matrix.txt and snp_id's in sample variants file from lars
@@ -227,9 +230,13 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
     - find a gene whose snp_id's overlap with our sample variant file
       - none of the snp_id's in the sample variants are found in genes that have drug recommendations on pharmgkb
     - gather all gene_haplotype data and determine a list of snp_id's that have drug recommendations on pharmgkb
-    - try out scrapy for gathering gene_haplotype data
+    [o] try out scrapy for gathering gene_haplotype data
       - is it possible to use scrapy on local html files instead of always downloading stuff (i.e. can we 
         cache stuff?)
+        - yes, "wget -r" it then run a local web server
 - create a web crawler to extract pharmgkb data
-- ask andrea about tools for disambiguating which alleles in heterozygous snps 
-  occur on the same physical chromosome
+  - crawl out from cpicGeneDrugPairs to the gene pages
+    - extract gene-haplotype matrices from gene pages
+      - convert to gene-haplotype matrices to table data using gene_haplotype_matrix_to_table.py
+      - gather a list of snp_ids for each gene, and ask lars for genotyping data sample file that uses these snp_ids (it has to be all of them for a 
+        gene...otherwise we need to select a subset of snps to care about for each gene)

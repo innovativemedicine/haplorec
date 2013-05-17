@@ -219,36 +219,17 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
         - duplicate removal ensures that rows with null's for their primary key will get removed, which ensures that there will only be one row for all the failed 
           genotype_p
 
-
-select
-
-*
-
-from
-
-job_patient_phenotype_drug_recommendation jppdr
-left join drug_recommendation dr on (jppdr.drug_recommendation_id = dr.id)
-left join gene_phenotype_drug_recommendation gpdr using (drug_recommendation_id)
-left join job_patient_gene_phenotype jpgp using (job_id, patient_id, gene_name, phenotype_name)
-left join genotype_phenotype gp using (gene_name, phenotype_name)
-join job_patient_genotype jpg using (job_id, patient_id, haplotype_name1, haplotype_name2)
--- left join job_patient_gene_haplotype jpgh                     on (
---                         jpgh.job_id = jpg.job_id and
---                         jpgh.patient_id = jpg.patient_id and
---                         jpgh.gene_name = jpg.gene_name and
---                         jpgh.haplotype_name = jpg.haplotype_name1
---                        ) or (
---                         jpgh.job_id = jpg.job_id and
---                         jpgh.patient_id = jpg.patient_id and
---                         jpgh.gene_name = jpg.gene_name and
---                         jpgh.haplotype_name = jpg.haplotype_name2
---                        )
--- left join gene_haplotype_variant ghv                     on ghv.gene_name = jpgh.gene_name and
---                        ghv.haplotype_name = jpgh.haplotype_name
--- 
--- left join job_patient_variant jpv                     on jpv.patient_id = jpgh.patient_id and
---                        jpv.job_id = jpgh.job_id and
---                        jpv.snp_id = ghv.snp_id and
---                        jpv.allele = ghv.allele
-
-where jppdr.job_id = 1 and jppdr.patient_id = 'patient2'
+- create sample using real data
+  - use CYP2C19 data from aaron
+    - there is no overlap between snp_id's in CYP2C19_haplotype_matrix.txt and snp_id's in sample variants file from lars
+    [o] create a script for converting gene_haplotype matrix into gene_haplotype 
+      table format
+    - find a gene whose snp_id's overlap with our sample variant file
+      - none of the snp_id's in the sample variants are found in genes that have drug recommendations on pharmgkb
+    - gather all gene_haplotype data and determine a list of snp_id's that have drug recommendations on pharmgkb
+    - try out scrapy for gathering gene_haplotype data
+      - is it possible to use scrapy on local html files instead of always downloading stuff (i.e. can we 
+        cache stuff?)
+- create a web crawler to extract pharmgkb data
+- ask andrea about tools for disambiguating which alleles in heterozygous snps 
+  occur on the same physical chromosome

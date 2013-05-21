@@ -106,7 +106,7 @@ class Input {
                     def _next = { ->
                         lineNo += 1
                         CharSequence l = iter.next()
-                        return l.split(kwargs.separator)
+                        return l.split(kwargs.separator) as List
                     }
                     while (iter.hasNext()) {
                         def fields = _next()

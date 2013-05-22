@@ -1,5 +1,6 @@
 from scrapy import signals
-from scrapy.contrib.exporter import CsvItemExporter
+from scrapy.contrib.exporter import CsvItemExporter, JsonLinesItemExporter
+import items
 
 # Define your item pipelines here
 #
@@ -15,7 +16,10 @@ class CsvPipeline(object):
         if item.__class__ in self.exporters:
             exporter = self.exporters[item.__class__]
         else:
-            exporter = CsvItemExporter(open('{}.csv'.format(item.__class__.__name__), 'w+b'))
+            if item.__class__ == items.unused_genotype_data:
+                exporter = JsonLinesItemExporter(open('{}.json'.format(item.__class__.__name__), 'w+b'))
+            else:
+                exporter = CsvItemExporter(open('{}.csv'.format(item.__class__.__name__), 'w+b'))
             self.exporters[item.__class__] = exporter
             exporter.start_exporting()
         return exporter

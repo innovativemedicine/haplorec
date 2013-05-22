@@ -239,3 +239,23 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
     [o] extract gene-haplotype matrices from gene pages
       - gather a list of snp_ids for each gene, and ask lars for genotyping data sample file that uses these snp_ids (it has to be all of them for a 
         gene...otherwise we need to select a subset of snps to care about for each gene)
+
+- other datasets still needing extraction:
+  1. genotype -> drug recommendation
+  2. phenotype -> drug recommendation
+  3. genotype -> phenotype 
+  - 1. 2. and 3. are presented in inconsistent ways making it difficult to extract automatically
+    - (TODO: check that ajax form that pops up and figure out how to use it to extract genotype -> drug recommendation / phenotype)
+  - extract json urls to query using scrapy (grab it from things like Y.Guidelines.popPickers('#edg981483939','981483939'); ) (NOTE: 981483939 is the 
+    "annotationId")
+    - json urls:
+      - haplotype names / internal haplotype ids:
+        http://www.pharmgkb.org/views/ajaxGuidelinePickerData.action?annotationId=827848453
+      - genotype -> * mappings (i.e. -> phenotype / and drug recommendation):
+        http://www.pharmgkb.org/views/alleleGuidelines.action?allele1=PA165987830&allele2=--&location=HLA-B&annotationId=827848453
+        http://www.pharmgkb.org/views/alleleGuidelines.action?allele1=PA165987830&allele2=PA165987830&location=HLA-B&annotationId=827848453
+      - for genes with significantly many haplotypes (e.g. CYP2D6 on http://www.pharmgkb.org/gene/PA128), clearly there are certain phenotypes associated 
+        with each allele (e.g. non-functional, functional, reduced function) determinable from the "Phenotype (Genotype)" (e.g. An individual carrying 
+        only non-functional alleles) when the same allele is entered.
+    - TODO: the drug recommendations given for GenotypeSpider are missing drug_name... i'm not sure if its really useful then....
+

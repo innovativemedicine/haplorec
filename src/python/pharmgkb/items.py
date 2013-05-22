@@ -56,3 +56,13 @@ class genotype_drug_recommendation(Item):
     haplotype_name2 = Field()
     # drug_recommendation_id = Field()
 
+# end of mysql tables
+
+class unused_genotype_data(Item):
+    source = Field()
+    values = Field()
+
+class gene_haplotype_phenotype(Item):
+    gene_name = Field()
+    haplotype_name = Field()
+    phenotype_name = Field()

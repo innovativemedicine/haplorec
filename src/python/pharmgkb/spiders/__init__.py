@@ -3,8 +3,8 @@
 # Please refer to the documentation for information on how to create and manage
 # your spiders.
 
-def as_func(spider_class, *args):
+def as_func(spider_class, *args, **kwargs):
     def run_spider(response):
-        spider = spider_class(*args)
+        spider = spider_class(*args, **kwargs)
         return spider.parse(response)
     return run_spider

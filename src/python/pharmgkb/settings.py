@@ -20,3 +20,6 @@ DOWNLOAD_DELAY = 1
 ITEM_PIPELINES = [
         'pharmgkb.pipelines.CsvPipeline',
 ]
+
+HTTPCACHE_ENABLED = True
+HTTPCACHE_DIR = 'cache'

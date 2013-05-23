@@ -14,10 +14,12 @@ def get_domain(url):
     p = urlparse.urlparse(url)
     return "{}://{}".format(p.scheme, p.netloc)
 
-def spider_request(spider_class, response, **kwargs):
+def _spider_request_callback(spider, response):
+    return spider.parse(response)
+def spider_request(spider_class, response, callback=_spider_request_callback, **kwargs):
     base_url = get_domain(response.url)
     spider = spider_class(base_url, **kwargs)
-    return spider.request(base_url, spider.parse, **kwargs)
+    return spider.request(base_url, lambda r: _spider_request_callback(spider, r), **kwargs)
 
 class GeneSpider(BaseSpider):
     name = "Gene"
@@ -109,8 +111,7 @@ class GeneHaplotypePhenotypeSpider(FormRequestSpider, BaseSpider):
                     haplotype_names.append(haplotype['name'])
                     haplotype_ids.append(haplotype['value'])
         if len(haplotype_names) <= max_haplotypes:
-            # TODO: select with __replacement__
-            for haplotype1, haplotype2 in [sorted(genotype, key=lambda haplotype: haplotype[0]) for genotype in itertools.combinations(itertools.izip(haplotype_names, haplotype_ids), 2)]:
+            for haplotype1, haplotype2 in [sorted(genotype, key=lambda haplotype: haplotype[0]) for genotype in itertools.combinations_with_replacement(itertools.izip(haplotype_names, haplotype_ids), 2)]:
                 haplotype_name1, haplotype_id1 = haplotype1
                 haplotype_name2, haplotype_id2 = haplotype2
                 yield spider_request(GenotypeSpider, response, 
@@ -121,7 +122,33 @@ class GeneHaplotypePhenotypeSpider(FormRequestSpider, BaseSpider):
                     gene_name=gene_name,
                     annotation_id=annotation_id)
         else:
-            pass
+            # parse all genotypes consisting of identical haplotypes, and extract the haplotype's 'phenotype' (e.g. functional, non-functional, etc.)
+            for haplotype in itertools.izip(haplotype_names, haplotype_ids):
+                yield spider_request(GenotypeSpider, response, callback=self.parse_genotypes_using_haplotypes,
+                    haplotype_name1=haplotype_name,
+                    haplotype_name2=haplotype_name,
+                    haplotype_id1=haplotype_id,
+                    haplotype_id2=haplotype_id,
+                    gene_name=gene_name,
+                    annotation_id=annotation_id)
+
+    def parse_genotypes_using_haplotypes(self, spider, response):
+        # a mapping from haplotype phenotypes to haplotypes
+        # TODO: use default dict with default = []
+        haplotypes = {}
+        haplotype_name = spider.kwargs['haplotype_name1']
+        haplotype_id = spider.kwargs['haplotype_id1']
+        haplotype = (haplotype_name, haplotype_id)
+        for item in spider.parse(response):
+            if item.__class__ == items.genotype_phenotype:
+                # extract the haplotype's 'phenotype' using a regex
+                # e.g. for CYP2D6A *10/*10: "An individual carrying two reduced function alleles"
+                # TODO: this won't be "Phenotype (Genotype)" for phenotype_exceptions
+                haplotype_phenotype = re.search(r'two .* alleles.?\s*$', item['phenotype_name']).group(1)
+                # TODO: make sure our regex matches otherwise fail with a descriptive error
+                haplotypes[haplotype_phenotype].append(haplotype)
+            yield item
+        # TODO: parse pairs with replacement of various "sample" haplotypes, and duplicate them for other pairs with the same haplotype_phenotype
 
 class GenotypeSpider(FormRequestSpider, BaseSpider):
     max_genotype_requests = 100
@@ -142,7 +169,6 @@ class GenotypeSpider(FormRequestSpider, BaseSpider):
         ]
 
     def parse_form_response(self, response, haplotype_name1=None, haplotype_name2=None, haplotype_id1=None, haplotype_id2=None, gene_name=None, annotation_id=None):
-        import pdb; pdb.set_trace()
         drug_recommendation = items.drug_recommendation()
         genotype_phenotype = items.genotype_phenotype(
             haplotype_name1=haplotype_name1,

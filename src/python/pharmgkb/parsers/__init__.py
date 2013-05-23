@@ -4,3 +4,4 @@ def table(t):
     yield header
     for row in rows[1:]:
         yield row.select('td') 
+

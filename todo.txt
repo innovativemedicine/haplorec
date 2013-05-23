@@ -259,3 +259,7 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
         only non-functional alleles) when the same allele is entered.
     - TODO: the drug recommendations given for GenotypeSpider are missing drug_name... i'm not sure if its really useful then....
 
+- handle the brute force (choose 2 with replacement) genotype mapping approach 
+- handle the non-brute force genotype mapping approach
+- create a wrapper method for invoking GenotypeSpider so we can store state in the GeneSpider regarding 
+  haplotypes and their individual parse results

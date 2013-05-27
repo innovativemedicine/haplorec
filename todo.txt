@@ -258,13 +258,33 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
         with each allele (e.g. non-functional, functional, reduced function) determinable from the "Phenotype (Genotype)" (e.g. An individual carrying 
         only non-functional alleles) when the same allele is entered.
     - TODO: the drug recommendations given for GenotypeSpider are missing drug_name... i'm not sure if its really useful then....
+      WRONG: the "Look up your guideline" dialogs are given PER-DRUG
 
-- handle the brute force (choose 2 with replacement) genotype mapping approach 
-- handle the non-brute force genotype mapping approach
-- create a wrapper method for invoking GenotypeSpider so we can store state in the GeneSpider regarding 
-  haplotypes and their individual parse results
+- check genes in genotype_phenotype.csv for non-descriptive phenotypes that could be obtained from alternate fields (by 
+  adding to phenotype_exceptions)
+- check for genes missing from any of the files
+  - why are they missing?
+  - add checks for empty stuff instead of iterating over an empty list silently
+- the "Look up your guideline" dialogs are given PER-DRUG
+  - need to extract drug_name and pass it to GenotypeSpider
+- missing drug_recommendation's for:
+  - http://www.pharmgkb.org/gene/PA134865839#tabview=tab0&subtab=31 : doesn't use haplotypes but instead uses a single 'genotype' field
+    e.g. 
 
-TODO:
-figure out how form request are being cached... and hopefully they're being cached / not being cached for a reason?
-- looks like it should be stored... maybe it's because it never terminated cleanly and hence never flushed the changes
-- yay it looks like it's caching
+    (equivalent of GeneHaplotypeSpider)
+    http://www.pharmgkb.org/views/ajaxGuidelinePickerData.action?annotationId=827921472
+    -> {"results":[{"alleles":["CC","TC","TT"],"rsid":"rs4149056"}]}
+
+    (equivalent of GenotypeSpider)
+    http://www.pharmgkb.org/views/alleleGuidelines.action?allele1=TC&location=rs4149056&annotationId=827921472
+    -> 
+    Phenotype (Genotype)
+    Intermediate activity
+
+    Implications
+    Intermediate myopathy risk
+
+    Recommendations (Strength: Strong)
+    FDA recommends against 80 mg. Consider a lower dose; if suboptimal efficacy, consider an alternative statin.
+
+    At the time of the development of this recommendation, there are no data available on the possible role of SLCO1B1 in simvastatin-induced myopathies in pediatric patient populations; however, there is no reason to suspect that SLCO1B1 variant alleles would affect simvastatin hepatic uptake differently in children compared to adults. Please see below for full details of these guidelines, with supporting evidence and disclaimers.

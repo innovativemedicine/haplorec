@@ -37,11 +37,22 @@ class GeneSpider(BaseSpider):
     def parse(self, response):
         hxs = HtmlXPathSelector(response)
         gene_name = re.search(r'^(.*)\s*\[PharmGKB\]$', hxs.select('//title/text()')[0].extract()).group(1).rstrip()
-        t_xs = hxs.select('//div[@id="tabHaplotypes"]/article[@class="HaplotypeSet"]/*/table')
-        if t_xs == []:
-            # this gene has no "Haplotypes" tab on its page, so skip it
-            return
-        t = parsers.table(t_xs[0])
+        haplotypes_table = hxs.select('//div[@id="tabHaplotypes"]/article[@class="HaplotypeSet"]/*/table')
+        if haplotypes_table != []:
+            # this gene a "Haplotypes" tab on its page
+            for gene_haplotype_variant in self.parse_haplotypes_table(haplotypes_table[0], gene_name):
+                yield gene_haplotype_variant
+
+        base_url = get_domain(response.url)
+        annotation_ids = hxs.select('//script[contains(@type, "javascript") and contains(text(), "popPickers")]/text()').re(r"popPickers\('#edg(\d+)','\d+'\);")
+        if annotation_ids == []:
+            self.log("Missing gene haplotype data for {gene_name}".format(**locals()), level=scrapy.log.WARNING)
+        for annotation_id in annotation_ids:
+            yield spider_request(GeneHaplotypeSpider, response,
+                    annotation_id=annotation_id)
+
+    def parse_haplotypes_table(self, haplotypes_table, gene_name):
+        t = parsers.table(haplotypes_table)
         header = t.next()
         snp_ids = header.select('text() | a/text()')[1:].extract()
         alleles = {}
@@ -54,12 +65,6 @@ class GeneSpider(BaseSpider):
                         snp_id=snp_id,
                         allele=allele,
                         )
-
-        base_url = get_domain(response.url)
-        annotation_ids = hxs.select('//script[contains(@type, "javascript") and contains(text(), "popPickers")]/text()').re(r"popPickers\('#edg(\d+)','\d+'\);")
-        for annotation_id in annotation_ids:
-            yield spider_request(GeneHaplotypePhenotypeSpider, response,
-                    annotation_id=annotation_id)
 
 class FormRequestSpider(object):
     def __init__(self):
@@ -87,7 +92,11 @@ def quadratic_formula(a, b, c):
 class GeneHaplotypePhenotypeException(Exception):
     pass
 
-class GeneHaplotypePhenotypeSpider(FormRequestSpider, BaseSpider):
+class GeneHaplotypeSpider(FormRequestSpider, BaseSpider):
+    """
+    Parse the json response containing genes and their haplotypes, then dispatch some 
+    GenotypeSpider's for each possible genotype.
+    """
     name = "GeneHaplotypes"
     url = '/views/ajaxGuidelinePickerData.action'
     # allowed_domains = ["pharmgkb.org"]
@@ -151,7 +160,11 @@ class GenotypeSpider(FormRequestSpider, BaseSpider):
         if len(hxs.select('//text()').re('This guideline does not contain recommendations')) != 0:
             return
 
-        drug_recommendation = items.drug_recommendation()
+        drug_recommendation = items.drug_recommendation(
+            haplotype_name1=haplotype_name1,
+            haplotype_name2=haplotype_name2,
+            gene_name=gene_name,
+        )
         genotype_phenotype = items.genotype_phenotype(
             haplotype_name1=haplotype_name1,
             haplotype_name2=haplotype_name2,

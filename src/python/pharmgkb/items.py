@@ -27,11 +27,16 @@ class GeneItem(Item):
 # mysql tables
 
 class drug_recommendation(Item):
+    # mysql fields
     drug_name = Field()
     implications = Field()
     recommendation = Field()
     classification = Field()
     diplotype_egs = Field()
+    # non-mysql fields (needed to populate genotype_drug_recommendation)
+    gene_name = Field()
+    haplotype_name1 = Field()
+    haplotype_name2 = Field()
 
 class gene_phenotype_drug_recommendation(Item):
     gene_name = Field()

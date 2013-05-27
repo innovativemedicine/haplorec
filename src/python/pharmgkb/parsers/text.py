@@ -1,4 +1,4 @@
-from funcparserlib.parser import some, a, many, skip, finished, maybe, with_forward_decls
+from funcparserlib.parser import some, a, many, skip, finished, maybe, with_forward_decls, NoParseError
 from tokenize import generate_tokens 
 import token
 from StringIO import StringIO
@@ -68,27 +68,50 @@ def tokval(t):
 
 def _join_vals(tl):
     return ' '.join(tokval(tl))
-def _allele(allele_str, number_pattern, number):
+def _allele(allele_str, count_prefix):
     return (
-        skip(ipattern(number_pattern)) + 
+        skip(count_prefix) + 
         ( (many( ipattern(r'^(?!{}).*'.format(allele_str)) )) >> _join_vals ) + 
         skip( ipattern(r'{}'.format(allele_str)) )
     )
 # E.g.
 # "one functional allele and one gain-of-function allele"
-_one_allele = _allele('allele', r'one', 1)
+_one_allele = _allele('allele', ipattern(r'one'))
 # E.g.
 # "two gain-of-function alleles"
-_two_alleles = _allele('alleles', r'two', 2)
+_two_alleles = _allele('alleles', ipattern(r'two|only') | ( ipattern('duplications') + ipattern('of')))
+
+def separated(parser, by):
+    def append(parsed):
+        first = parsed[0]
+        rest = parsed[1]
+        rest.insert(0, first)
+        return rest
+    return ( parser + many(by + parser) ) >> append
 
 # E.g. 
 # "An individual carrying two gain-of-function alleles or one functional allele and one gain-of-function allele"
 # => [('gain-of-function', 'gain-of-function'), ('functional', 'gain-of-function')]
 phenotype_genotype = ( 
-    skip( ipattern(r'an', r'individual', r'carrying') ) + many( 
-        (  ( _two_alleles >> (lambda allele: ( allele, allele )) ) | 
-           ( _one_allele + skip(ipattern(r'and')) + _one_allele ) 
-        ) + 
-        skip(maybe(ipattern(r'or')))
+    skip( ipattern(r'an', r'individual', r'carrying') ) + 
+    separated(
+       ( _two_alleles >> (lambda allele: ( allele, allele )) ) | 
+       ( _one_allele + skip(ipattern(r'and')) + _one_allele ),
+       skip(maybe(ipattern(r'or')))
     )
 )
+
+_parsers = {
+    'phenotype_genotype': phenotype_genotype,
+}
+class ParserError(Exception):
+    pass
+def parse(parser_name, string):
+    parser = _parsers[parser_name]
+    toks = [x for x in tokens(string)]
+    try:
+        return parser.parse(toks)
+    except NoParseError as e:
+        raise ParserError("Failed to parse {thing_to_parse}: \"{string}\" at {token}".format(
+            string=string, token=toks[e.state.max-1], thing_to_parse=parser_name,
+        ))

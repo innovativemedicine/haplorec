@@ -263,3 +263,8 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
 - handle the non-brute force genotype mapping approach
 - create a wrapper method for invoking GenotypeSpider so we can store state in the GeneSpider regarding 
   haplotypes and their individual parse results
+
+TODO:
+figure out how form request are being cached... and hopefully they're being cached / not being cached for a reason?
+- looks like it should be stored... maybe it's because it never terminated cleanly and hence never flushed the changes
+- yay it looks like it's caching

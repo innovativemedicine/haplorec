@@ -49,6 +49,9 @@ class genotype_phenotype(Item):
     haplotype_name1 = Field()
     haplotype_name2 = Field()
     phenotype_name = Field()
+    # meta-data that we don't want in the csv
+    # Phenotype (Genotype)
+    phenotype_genotype = Field()
 
 class genotype_drug_recommendation(Item):
     gene_name = Field()

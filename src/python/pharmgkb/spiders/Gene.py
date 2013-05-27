@@ -66,7 +66,6 @@ class FormRequestSpider(object):
         self.formdata = {}
 
     def request(self, base_url, callback, **kwargs):
-        # self.formdata = {}
         for name, attr in self.formdata_fields:
             self.formdata[name] = kwargs[attr]
         return FormRequest(base_url + self.url, formdata=self.formdata, callback=callback)
@@ -102,8 +101,6 @@ class GeneHaplotypePhenotypeSpider(FormRequestSpider, BaseSpider):
             ('annotationId', 'annotation_id'),
         ]
 
-    # for each haplotype:
-    #     parse 'Phenotype (Genotype)'
     def parse_form_response(self, response, annotation_id=None):
         result = None
         try:
@@ -114,116 +111,21 @@ class GeneHaplotypePhenotypeSpider(FormRequestSpider, BaseSpider):
         gene_name = None
         haplotype_names = []
         haplotype_ids = []
-        # maximum number of haplotypes there can be to be able to take all pairs of haplotypes and still be less than GenotypeSpider.max_genotype_requests
-        # i.e. the result of solving the equation:
-        # n choose 2 = n(n-1)/2 < GenotypeSpider.max_genotype_requests
-        # n**2 - n - 2*GenotypeSpider.max_genotype_requests < 0
-        max_haplotypes = int(max(quadratic_formula(1, 1, -2*GenotypeSpider.max_genotype_requests)))
         for r in result['results']:
             if 'gene' in r and 'haps' in r: 
                 gene_name = r['gene']
                 haplotype_names = [haplotype['name'] for haplotype in r['haps']]
                 haplotype_ids = [haplotype['value'] for haplotype in r['haps']]
-                # if len(haplotype_names) <= max_haplotypes:
-                # if False:
-                if True:
-                    for haplotype1, haplotype2 in [sorted(genotype, key=lambda haplotype: haplotype[0]) for genotype in itertools.combinations_with_replacement(itertools.izip(haplotype_names, haplotype_ids), 2)]:
-                        haplotype_name1, haplotype_id1 = haplotype1
-                        haplotype_name2, haplotype_id2 = haplotype2
-                        yield spider_request(GenotypeSpider, response, 
-                            haplotype_name1=haplotype_name1,
-                            haplotype_name2=haplotype_name2,
-                            haplotype_id1=haplotype_id1,
-                            haplotype_id2=haplotype_id2,
-                            gene_name=gene_name,
-                            annotation_id=annotation_id)
-                else:
-                    haplotype_phenotypes = collections.defaultdict(list)
-                    num_spiders = len(haplotype_names)
-                    spiders_finished = [0]
-                    def on_finished():
-                        spiders_finished[0] += 1
-                        if spiders_finished[0] == num_spiders:
-                            for item in self.collect_haplotype_genotypes(gene_name, haplotype_phenotypes, response):
-                                yield item
-                    def call_collect_haplotype_phenotypes(spider, r):
-                        for item in self.collect_haplotype_phenotypes(haplotype_phenotypes, on_finished, spider, r):
-                            yield item
-                    for haplotype_name, haplotype_id in itertools.izip(haplotype_names, haplotype_ids):
-                        yield spider_request(GenotypeSpider, response, callback=call_collect_haplotype_phenotypes,
-                            haplotype_name1=haplotype_name,
-                            haplotype_name2=haplotype_name,
-                            haplotype_id1=haplotype_id,
-                            haplotype_id2=haplotype_id,
-                            gene_name=gene_name,
-                            annotation_id=annotation_id)
-
-    def collect_haplotype_genotypes(self, gene_name, haplotype_phenotypes, response):
-        # parse all genotypes consisting of identical haplotypes, and extract the haplotype's 'phenotype' (e.g. functional, non-functional, etc.)
-        # (HaplotypePhenotype, HaplotypePhenotype) -> genotype_phenotype item fields
-        genotype_phenotypes = {}
-        haplotype_phenotype_pairs = pairs(haplotype_phenotypes.keys())
-        num_spiders = len(haplotype_phenotype_pairs)
-        spiders_finished = [0]
-        def on_finished():
-            spiders_finished[0] += 1
-            if spiders_finished[0] == num_spiders:
-                for item in self.generate_genotype_phenotypes(gene_name, genotype_phenotypes, haplotype_phenotypes):
-                    yield item
-        def call_genotype_spider(spider, response):
-            for item in spider.parse(response):
-                if item.__class__ == items.genotype_phenotype:
-                    genotype_phenotypes[haplotype_phenotype_pair] = {
-                        'phenotype_name': item['phenotype_name'],
-                        'phenotype_genotype': item['phenotype_genotype'],
-                    }
-                yield item
-            for item in on_finished():
-                yield item
-        for haplotype_phenotype_pair in haplotype_phenotype_pairs:
-            genotype_phenotypes[haplotype_phenotype_pair] = items.genotype_phenotype()
-            haplotype1 = haplotype_phenotypes[haplotype_phenotype_pair[0]][0]
-            haplotype2 = haplotype_phenotypes[haplotype_phenotype_pair[1]][0]
-            yield spider_request(GenotypeSpider, response, callback=call_genotype_spider,
-                haplotype_name1=haplotype1[0],
-                haplotype_name2=haplotype2[0],
-                haplotype_id1=haplotype1[1],
-                haplotype_id2=haplotype2[1],
-                gene_name=gene_name,
-                annotation_id=self.kwargs['annotation_id'])
-
-    def generate_genotype_phenotypes(self, gene_name, genotype_phenotypes, haplotype_phenotypes):
-        pass
-
-    def collect_haplotype_phenotypes(self, haplotype_phenotypes, on_finished, spider, response):
-        # import pdb; pdb.set_trace()
-        # a mapping from haplotype phenotypes to haplotypes
-        # import pdb; pdb.set_trace()
-        haplotype_name = spider.kwargs['haplotype_name1']
-        haplotype_id = spider.kwargs['haplotype_id1']
-        haplotype = (haplotype_name, haplotype_id)
-        for item in spider.parse(response):
-            if item.__class__ == items.genotype_phenotype:
-                # extract the haplotype's 'phenotype'
-                # e.g. for CYP2D6A *10/*10: "An individual carrying two reduced function alleles"
-                # NOTE: this won't be "Phenotype (Genotype)" for phenotype_exceptions
-                # TODO: make sure this assumption holds
-                genotypes = parse('phenotype_genotype', item['phenotype_genotype'])
-                if len(genotypes) != 1:
-                    self.error(("Ambiguous haplotype 'phenotype' when parsing 'Phenotype (Genotype)' == \"{string}\"; " + 
-                                    "possibilities are from genotypes {genotypes}'").format(
-                        string=item['phenotype_genotype'],
-                        genotypes=genotypes))
-                    next
-                if genotypes[0][0] != genotypes[0][1]:
-                    self.error("Expected homozygous genotype for determining haplotype 'phenotype', but saw {genotype}".format(genotype=genotype[0]))
-                    next
-                haplotype_phenotype = genotypes[0][0]
-                haplotype_phenotypes[haplotype_phenotype].append(haplotype)
-            yield item
-        for item in on_finished():
-            yield item
-        # TODO: parse pairs with replacement of various "sample" haplotypes, and duplicate them for other pairs with the same haplotype_phenotype
+                for haplotype1, haplotype2 in [sorted(genotype, key=lambda haplotype: haplotype[0]) for genotype in itertools.combinations_with_replacement(itertools.izip(haplotype_names, haplotype_ids), 2)]:
+                    haplotype_name1, haplotype_id1 = haplotype1
+                    haplotype_name2, haplotype_id2 = haplotype2
+                    yield spider_request(GenotypeSpider, response, 
+                        haplotype_name1=haplotype_name1,
+                        haplotype_name2=haplotype_name2,
+                        haplotype_id1=haplotype_id1,
+                        haplotype_id2=haplotype_id2,
+                        gene_name=gene_name,
+                        annotation_id=annotation_id)
 
 class GenotypeSpider(FormRequestSpider, BaseSpider):
     max_genotype_requests = 100
@@ -231,7 +133,6 @@ class GenotypeSpider(FormRequestSpider, BaseSpider):
     url = '/views/alleleGuidelines.action'
     # allowed_domains = ["pharmgkb.org"]
 
-    # -a haplotype_name1="*11" -a haplotype_name2="*11" -a haplotype_id1=PA165971564 -a haplotype_id2=PA165971564 -a gene_name=CYP2D6 -a annotation_id=981483939
     def __init__(self, base_url='http://www.pharmgkb.org', **kwargs):
         FormRequestSpider.__init__(self)
         self.base_url = base_url
@@ -264,7 +165,6 @@ class GenotypeSpider(FormRequestSpider, BaseSpider):
                 return ('Recommendations', m.group(1))
             return t
 
-        # TODO: fix text extraction
         title_value = dict(itertools.izip([strip_title(t) for t in hxs.select('//dt/*/text()').extract()],
                            [' '.join(h.select('(* | */*)/text()').extract()) for h in hxs.select('//dd')]))
 
@@ -298,5 +198,3 @@ class GenotypeSpider(FormRequestSpider, BaseSpider):
         yield drug_recommendation
         if unused_genotype_data['values'] != {}:
             yield unused_genotype_data
-        
-    # def parse_genotype_mappings(self, response):

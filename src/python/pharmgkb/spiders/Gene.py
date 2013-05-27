@@ -48,8 +48,10 @@ class GeneSpider(BaseSpider):
         if annotation_ids == []:
             self.log("Missing gene haplotype data for {gene_name}".format(**locals()), level=scrapy.log.WARNING)
         for annotation_id in annotation_ids:
+            drug_name = hxs.select('//div[@id="pgkb_da_{annotation_id}"]/h2/a[starts-with(@href, "/drug")]/text()'.format(**locals()))[0].extract()
             yield spider_request(GeneHaplotypeSpider, response,
-                    annotation_id=annotation_id)
+                    annotation_id=annotation_id,
+                    drug_name=drug_name)
 
     def parse_haplotypes_table(self, haplotypes_table, gene_name):
         t = parsers.table(haplotypes_table)
@@ -110,7 +112,7 @@ class GeneHaplotypeSpider(FormRequestSpider, BaseSpider):
             ('annotationId', 'annotation_id'),
         ]
 
-    def parse_form_response(self, response, annotation_id=None):
+    def parse_form_response(self, response, annotation_id=None, drug_name=None):
         result = None
         try:
             result = json.loads(response.body)
@@ -134,6 +136,7 @@ class GeneHaplotypeSpider(FormRequestSpider, BaseSpider):
                         haplotype_id1=haplotype_id1,
                         haplotype_id2=haplotype_id2,
                         gene_name=gene_name,
+                        drug_name=drug_name,
                         annotation_id=annotation_id)
 
 class GenotypeSpider(FormRequestSpider, BaseSpider):
@@ -154,7 +157,9 @@ class GenotypeSpider(FormRequestSpider, BaseSpider):
             ('location', 'gene_name'),
         ]
 
-    def parse_form_response(self, response, haplotype_name1=None, haplotype_name2=None, haplotype_id1=None, haplotype_id2=None, gene_name=None, annotation_id=None):
+    def parse_form_response(self, response, haplotype_name1=None, haplotype_name2=None, 
+            haplotype_id1=None, haplotype_id2=None, gene_name=None, annotation_id=None, 
+            drug_name=None):
         hxs = HtmlXPathSelector(response)
 
         if len(hxs.select('//text()').re('This guideline does not contain recommendations')) != 0:
@@ -164,6 +169,7 @@ class GenotypeSpider(FormRequestSpider, BaseSpider):
             haplotype_name1=haplotype_name1,
             haplotype_name2=haplotype_name2,
             gene_name=gene_name,
+            drug_name=drug_name,
         )
         genotype_phenotype = items.genotype_phenotype(
             haplotype_name1=haplotype_name1,

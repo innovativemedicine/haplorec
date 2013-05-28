@@ -74,3 +74,12 @@ class gene_haplotype_phenotype(Item):
     gene_name = Field()
     haplotype_name = Field()
     phenotype_name = Field()
+
+def copy_item_fields(item, to):
+    for k in item.fields.keys():
+        try:
+            to[k] = item[k]
+        except KeyError:
+            # item doesn't have k set, so don't set it in to either
+            pass
+    return to

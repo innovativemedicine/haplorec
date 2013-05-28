@@ -291,3 +291,8 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
 
   - when reading the gene-haplotype matrix in parse_haplotypes_table, record the table in the GeneSpider, then pass it along and use it when parsing inside GenotypeSpider
     - use mixin patterns to share code for SnpGenotypeSpider
+
+- start inserting data from scraping
+  -
+- change varchar fields to text fields where appropriate (e.g. drug_recommendation.recommendation) 
+- gather statistics for other fields (max length * 2) and make sure within limits (65,535)

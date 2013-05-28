@@ -33,7 +33,8 @@ class GeneSpider(BaseSpider):
 
     def __init__(self, start_url=None):
         self.start_urls = (start_url,)
-        self.gene_haplotypes = None
+        # a mapping from (snp_id, allele) -> [haplotype_name] (initialized inside parse_haplotypes_table)
+        self.snp_to_haplotype = None
 
     def parse(self, response):
         hxs = HtmlXPathSelector(response)
@@ -52,21 +53,25 @@ class GeneSpider(BaseSpider):
             drug_name = hxs.select('//div[@id="pgkb_da_{annotation_id}"]/h2/a[starts-with(@href, "/drug")]/text()'.format(**locals()))[0].extract()
             yield spider_request(GeneHaplotypeSpider, response,
                     annotation_id=annotation_id,
-                    drug_name=drug_name)
+                    drug_name=drug_name,
+                    gene_name=gene_name,
+                    snp_to_haplotype=self.snp_to_haplotype)
 
     def parse_haplotypes_table(self, haplotypes_table, gene_name):
+        self.snp_to_haplotype = collections.defaultdict(set)
         t = parsers.table(haplotypes_table)
         header = t.next()
         snp_ids = header.select('text() | a/text()')[1:].extract()
         alleles = {}
         for row in t:
             haplotype_name = row[0].select('a/text()')[0].extract()
-            for allele, snp_id in itertools.izip([r.select('text()').extract()[0].strip() for r in row[1:]], snp_ids):
+            for snp_allele in itertools.izip(snp_ids, [r.select('text()').extract()[0].strip() for r in row[1:]]):
+                self.snp_to_haplotype[snp_allele].add(haplotype_name)
                 yield items.gene_haplotype_variant(
                         gene_name=gene_name,
                         haplotype_name=haplotype_name,
-                        snp_id=snp_id,
-                        allele=allele,
+                        snp_id=snp_allele[0],
+                        allele=snp_allele[1],
                         )
 
 class FormRequestSpider(object):
@@ -87,14 +92,6 @@ class FormRequestSpider(object):
     def error(self, msg):
         self.log(msg + "\nForm data: {formdata}".format(formdata=self.formdata), level=scrapy.log.ERROR)
 
-def quadratic_formula(a, b, c):
-    import math
-    return (( -b + math.sqrt(b**2 - 4*a*c) ) / 2*a,
-            ( -b - math.sqrt(b**2 - 4*a*c) ) / 2*a)
-
-class GeneHaplotypePhenotypeException(Exception):
-    pass
-
 class GeneHaplotypeSpider(FormRequestSpider, BaseSpider):
     """
     Parse the json response containing genes and their haplotypes, then dispatch some 
@@ -113,14 +110,13 @@ class GeneHaplotypeSpider(FormRequestSpider, BaseSpider):
             ('annotationId', 'annotation_id'),
         ]
 
-    def parse_form_response(self, response, annotation_id=None, drug_name=None):
+    def parse_form_response(self, response, annotation_id=None, drug_name=None, snp_to_haplotype=None, gene_name=None):
         result = None
         try:
             result = json.loads(response.body)
         except ValueError:
             # empty response.body
             return
-        gene_name = None
         haplotype_names = []
         haplotype_ids = []
         for r in result['results']:
@@ -139,6 +135,17 @@ class GeneHaplotypeSpider(FormRequestSpider, BaseSpider):
                         gene_name=gene_name,
                         drug_name=drug_name,
                         annotation_id=annotation_id)
+            elif 'rsid' in r and 'alleles' in r:
+                snp_id = r['rsid']
+                genotype_names = r['alleles']
+                for genotype_name in genotype_names:
+                    yield spider_request(SnpGenotypeSpider, response,
+                            genotype_name=genotype_name,
+                            snp_id=snp_id,
+                            snp_to_haplotype=snp_to_haplotype,
+                            gene_name=gene_name,
+                            drug_name=drug_name,
+                            annotation_id=annotation_id)
 
 class BaseGenotypeSpider(FormRequestSpider, BaseSpider):
     url = '/views/alleleGuidelines.action'
@@ -241,27 +248,42 @@ class SnpGenotypeSpider(BaseGenotypeSpider):
 
     def __init__(self, base_url='http://www.pharmgkb.org', **kwargs):
         BaseGenotypeSpider.__init__(self, base_url, **kwargs)
+        if len(self.kwargs['genotype_name']) != 2:
+            raise ValueError("Expected a genotype_name consisting of 2 alleles (e.g. TC) but saw {genotype_name}".format(**self.kwargs))
+        self.snp_to_haplotype = kwargs['snp_to_haplotype']
         self.kwargs['location'] = kwargs['snp_id']
 
     def init_items(self, **kwargs):
-        if len(kwargs['genotype_name']) != 2:
-            raise ValueError("Expected a genotype_name consisting of 2 alleles (e.g. TC) but saw {genotype_name}".format(**locals()))
-        # genotype = sorted(kwargs['genotype_name'])
         drug_recommendation = items.drug_recommendation(
-            # haplotype_name1=genotype[0],
-            # haplotype_name2=genotype[1],
             gene_name=kwargs['gene_name'],
             drug_name=kwargs['drug_name'],
         )
         genotype_phenotype = items.genotype_phenotype(
-            # haplotype_name1=genotype[0],
-            # haplotype_name2=genotype[1],
             gene_name=kwargs['gene_name'],
         )
         return drug_recommendation, genotype_phenotype
 
-    def yield_items(self, genotype_phenotype, drug_recommendation):
+    def yield_items(self, genotype_phenotype_defaults, drug_recommendation_defaults):
         # use gene_haplotype_matrix to generate all possible Genotype's consisting of alleles found in self.genotype_name
-        # TODO: need a mapping from (snp_id, allele) -> haplotype_name
-        pass
-
+        snp_id = self.kwargs['snp_id']
+        allele1 = self.kwargs['genotype_name'][0]
+        allele2 = self.kwargs['genotype_name'][1]
+        for haplotype_name1, haplotype_name2 in [tuple(sorted(pair)) for pair in itertools.product(
+                self.snp_to_haplotype[(snp_id, allele1)], 
+                self.snp_to_haplotype[(snp_id, allele2)])]:
+            drug_recommendation = items.copy_item_fields(
+                drug_recommendation_defaults,
+                items.drug_recommendation(
+                    haplotype_name1=haplotype_name1,
+                    haplotype_name2=haplotype_name2,
+                ),
+            )
+            genotype_phenotype = items.copy_item_fields(
+                genotype_phenotype_defaults,
+                items.genotype_phenotype(
+                    haplotype_name1=haplotype_name1,
+                    haplotype_name2=haplotype_name2,
+                ),
+            )
+            yield drug_recommendation
+            yield genotype_phenotype

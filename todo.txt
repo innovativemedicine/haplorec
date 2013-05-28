@@ -260,13 +260,13 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
     - TODO: the drug recommendations given for GenotypeSpider are missing drug_name... i'm not sure if its really useful then....
       WRONG: the "Look up your guideline" dialogs are given PER-DRUG
 
-- check genes in genotype_phenotype.csv for non-descriptive phenotypes that could be obtained from alternate fields (by 
-  adding to phenotype_exceptions)
 - check for genes missing from any of the files
   - why are they missing?
   - add checks for empty stuff instead of iterating over an empty list silently
-- the "Look up your guideline" dialogs are given PER-DRUG
+[o] the "Look up your guideline" dialogs are given PER-DRUG
   - need to extract drug_name and pass it to GenotypeSpider
+- check genes in genotype_phenotype.csv for non-descriptive phenotypes that could be obtained from alternate fields (by 
+  adding to phenotype_exceptions)
 - missing drug_recommendation's for:
   - http://www.pharmgkb.org/gene/PA134865839#tabview=tab0&subtab=31 : doesn't use haplotypes but instead uses a single 'genotype' field
     e.g. 
@@ -288,3 +288,6 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
     FDA recommends against 80 mg. Consider a lower dose; if suboptimal efficacy, consider an alternative statin.
 
     At the time of the development of this recommendation, there are no data available on the possible role of SLCO1B1 in simvastatin-induced myopathies in pediatric patient populations; however, there is no reason to suspect that SLCO1B1 variant alleles would affect simvastatin hepatic uptake differently in children compared to adults. Please see below for full details of these guidelines, with supporting evidence and disclaimers.
+
+  - when reading the gene-haplotype matrix in parse_haplotypes_table, record the table in the GeneSpider, then pass it along and use it when parsing inside GenotypeSpider
+    - use mixin patterns to share code for SnpGenotypeSpider

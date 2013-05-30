@@ -293,6 +293,19 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
     - use mixin patterns to share code for SnpGenotypeSpider
 
 - start inserting data from scraping
-  -
-- change varchar fields to text fields where appropriate (e.g. drug_recommendation.recommendation) 
-- gather statistics for other fields (max length * 2) and make sure within limits (65,535)
+  - need to pre-process csv files into a readily loadable format and maintain id mappings for autoincrement fields (e.g. autoincrement)
+    - pre-process into generator, and pass the generator to some load_into_table function
+  - use oursql to use prepared statements (via executemany), as well as obtain lastrowid's
+  - load_dsv.py:
+    - given a list of dsv files, insert the files into their respective tables (files are named <table_name>.<extension>), maintaining foreign key constraints
+    - for autoincrement tables T referenced by other tables R_i, require a set of keys K_i in both T and R_i that can be used to resolve generated ids from T to use 
+      in R_i
+    - to avoid overcomplicating the script, insert files in the order they are provided (the fancy way would be to generate a dependency graph based on foreign key 
+      relationships...)
+- mysql_string_type.py: 
+  - gather statistics for other fields (max length * 2) and make sure within limits (65,535)
+    - for indexed fields, only return a 'length' suggestion
+    - for non-indexed fields, map length of field to string type:
+      see http://dev.mysql.com/doc/refman/5.0/en/storage-requirements.html ( Storage Requirements for String Types )
+- change varchar fields to text fields where appropriate (e.g. drug_recommendation.recommendation)
+  - figure where to do this by simply looking at errors spewed out by mysql after statistics gathering

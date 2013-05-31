@@ -8,6 +8,8 @@ import re
 import os.path
 import textwrap
 import collections
+import csv
+import itertools
 
 import argparse
 import argparsers
@@ -58,7 +60,6 @@ def main():
             user=args.user,
             passwd=args.password,
             db=args.db)
-    c = db.cursor()
 
     load_dsv(db, args.files, args.map, args.ignore, args.delim)
 
@@ -81,10 +82,10 @@ def load_dsv(db, files, mapping_strings=[], ignore_strings=[], delim=","):
     # a mapping from a referencing table to all the autoincrement tables it references and the fields through which is does so.
     # R -> [ (T, [f1, ..., fn]) ]
     fks = collections.defaultdict(list)
-    for m in tables:
-        R = mapping['table']
-        T = mapping['autoincrement_table']
-        columns = mapping['columns']
+    for m in mappings:
+        R = m['table']
+        T = m['autoincrement_table']
+        columns = m['columns']
         refs[T].append( (R, tuple(columns)) ) 
         fks[R].append( (T, tuple(columns)) )
 
@@ -96,6 +97,8 @@ def load_dsv(db, files, mapping_strings=[], ignore_strings=[], delim=","):
     for s in ignore_strings:
         ignore_field[tuple(parse(ignore, s))] = True
 
+
+    cursor = db.cursor()
     # a mapping from a referencing table, an autoincrement table it references, and field values through which the referencing happened, to an autoincrement value in T.
     # R, T, [v1, ..., vn] -> T.id
     fk_id = {}
@@ -113,14 +116,16 @@ def load_dsv(db, files, mapping_strings=[], ignore_strings=[], delim=","):
         insertion_input = rows_for_insert()
         header = insertion_input.next()
         insert_rows(cursor, t, header, insertion_input)
-        for T_id, row in itertools.izip(cursor, get_input(file)):
-            for R, columns in refs[t]:
-                fk_id[(R, t, tuple(row[c] for c in columns))] = T_id
+        if 'auto_increment_field' in metadata[t]:
+            for T_id, row in itertools.izip(cursor, get_input(file)):
+                for R, columns in refs[t]:
+                    fk_id[(R, t, tuple(row[c] for c in columns))] = T_id
 
 def insert_rows(cursor, table, header, rows):
     return cursor.executemany("""
         INSERT INTO {table} ({column_str}) VALUES ({qmarks})
     """.format(
+        table=table,
         column_str=comma_join(header), 
         qmarks=comma_join(len(header)*['?']),
     ), rows)
@@ -164,12 +169,12 @@ def table_metadata(db):
     """
     cursor = db.cursor(oursql.DictCursor)
     tables = {}
-    def get(dictionary, key, default={}):
+    def get(dictionary, key, default=dict):
         """
         Return dictionary[key] or set a default value and return it.
         """
         if key not in dictionary:
-            dictionary[key] = default
+            dictionary[key] = default()
         return dictionary[key]
     cursor.execute("""
         SELECT *
@@ -180,7 +185,7 @@ def table_metadata(db):
         table = get(tables, row['TABLE_NAME'])
         if row['COLUMN_KEY'] == 'PRI' and re.search(r"auto_increment", row['EXTRA']):
             table['autoincrement_field'] = row['COLUMN_NAME']
-        columns = get(table, 'columns', default=[])
+        columns = get(table, 'columns', default=list)
         columns.append(row['COLUMN_NAME'])
     return tables
 

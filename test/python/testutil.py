@@ -48,17 +48,26 @@ class DatabaseTestMixin(object):
         self.cursor.execute("drop database if exists {db}".format(db=self.db))
         self.connection.close()
 
+    def select(self, table=None, columns=None):
+        if table is not None and columns is not None:
+            self.cursor.execute("select {columns_str} from {table}".format(
+                columns_str=', '.join(columns),
+                table=table,
+            ))
+        return [row for row in self.cursor]
+
+# if it's a string, split it on ';' and return it
+# else if it's a list, return it
 def _lines(schema, schema_file):
-    schema_str = None
-    if type(schema_file) == str:
-        # filename
-        schema_str = ''.join(open(schema_file).readlines())
-    elif type(schema_file) == list:
-        # lines in a schema
-        schema_str = ''.join(schema_file)
-    else:
-        ValueError("Expected filename or list of lines but saw {schema_file} for schema file".format(**locals()))
-    return [l for l in re.sub(r'\s*--.*|\n\s*\n', '', schema_str).split(';') if not re.match(r'^\s*$', l)]
+    def schema_cmds(string):
+        return [l for l in re.sub(r'\s*--.*|\n\s*\n', '', string).split(';') if not re.match(r'^\s*$', l)]
+
+    if schema is not None:
+        if type(schema) == list:
+            return schema
+        return schema_cmds(schema)
+    # read schema_file
+    return schema_cmds(''.join(open(schema_file).readlines()))
 
 class tmp_dir:
     def __enter__(self):
@@ -73,6 +82,7 @@ def rows_to_dsv(rows, delim="\t"):
     writer = csv.writer(s, delimiter=delim)
     for row in rows:
         writer.writerow(row)
+    s.seek(0)
     return s.read()
 
 def create_files(files, directory=None):

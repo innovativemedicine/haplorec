@@ -19,10 +19,10 @@ def main():
         Given a list of dsv files, insert the files into their respective tables (files are named 
         <table_name>.<extension>), maintaining foreign key constraints. 
         
-        For autoincrement tables T referenced by other tables R_i, we require a set of keys K_i in 
+        For auto_increment tables T referenced by other tables R_i, we require a set of keys K_i in 
         both T and R_i that can be used to resolve generated ids from T to use in R_i.
         e.g. 
-        T   = CREATE TABLE ( T_id autoincrement, x, y ) 
+        T   = CREATE TABLE ( T_id auto_increment, x, y ) 
         R_1 = CREATE TABLE ( z, T_id                  ) 
         K_1 = x
         
@@ -73,24 +73,32 @@ def load_dsv(db, files, mapping_strings=[], ignore_strings=[], delim=","):
 
     mappings = [parse(mapping, m) for m in mapping_strings]
 
-    for m in mappings:
-        check_mapping(metadata, mapping)
+    table_to_file = {}
+    for file in files:
+        table = os.path.splitext(os.path.basename(file))[0]
+        table_to_file[table] = file
 
-    # a mapping from an autoincrement table to all tables it is referenced by (and through which fields).
+    def get_columns(file):
+        with csv_reader(file, delim=delim) as input:
+            return input.fieldnames
+
+    for m in mappings:
+        check_mapping(metadata, m, 
+            get_columns(table_to_file[m['auto_increment_table']]), 
+            get_columns(table_to_file[m['table']]))
+
+    # a mapping from an auto_increment table to all tables it is referenced by (and through which fields).
     # T -> [ (R, [f1, ..., fn]) ]
     refs = collections.defaultdict(list) 
-    # a mapping from a referencing table to all the autoincrement tables it references and the fields through which is does so.
+    # a mapping from a referencing table to all the auto_increment tables it references and the fields through which is does so.
     # R -> [ (T, [f1, ..., fn]) ]
     fks = collections.defaultdict(list)
     for m in mappings:
         R = m['table']
-        T = m['autoincrement_table']
+        T = m['auto_increment_table']
         columns = m['columns']
         refs[T].append( (R, tuple(columns)) ) 
         fks[R].append( (T, tuple(columns)) )
-
-    def get_input(file):
-        return csv.DictReader(fileinput.input([file]), delimiter=delim)
 
     # (R, X) -> Bool
     ignore_field = collections.defaultdict(lambda: False)
@@ -99,36 +107,51 @@ def load_dsv(db, files, mapping_strings=[], ignore_strings=[], delim=","):
 
 
     cursor = db.cursor()
-    # a mapping from a referencing table, an autoincrement table it references, and field values through which the referencing happened, to an autoincrement value in T.
+    # a mapping from a referencing table, an auto_increment table it references, and field values through which the referencing happened, to an auto_increment value in T.
     # R, T, [v1, ..., vn] -> T.id
     fk_id = {}
     for t, file in zip(tables, files):
-        input = get_input(file)
-        def rows_for_insert():
-            unignored = [f for f in input.fieldnames if not ignore_field[(t, f)]]
-            foreign_keys = [T + "_id" for T, t_fields in fks[t]]
-            header = unignored + foreign_keys 
-            # the first row is the header
-            yield header 
-            for row in input:
-                fk_ids = [fk_id[(t, T, tuple(row[f] for f in t_fields))] for T, t_fields in fks[t]]
-                yield [row[f] for f in unignored] + fk_ids
-        insertion_input = rows_for_insert()
-        header = insertion_input.next()
-        insert_rows(cursor, t, header, insertion_input)
-        if 'auto_increment_field' in metadata[t]:
-            for T_id, row in itertools.izip(cursor, get_input(file)):
-                for R, columns in refs[t]:
-                    fk_id[(R, t, tuple(row[c] for c in columns))] = T_id
+        # input = get_input(file)
+        with csv_reader(file, delim=delim) as input:
+            def rows_for_insert():
+                unignored = [f for f in input.fieldnames if not ignore_field[(t, f)]]
+                foreign_keys = [T + "_id" for T, t_fields in fks[t]]
+                header = unignored + foreign_keys 
+                # the first row is the header
+                yield header 
+                for row in input:
+                    fk_ids = [fk_id[(t, T, tuple(row[f] for f in t_fields))] for T, t_fields in fks[t]]
+                    yield [row[f] for f in unignored] + fk_ids
+            insertion_input = rows_for_insert()
+            header = insertion_input.next()
+            if 'auto_increment_field' in metadata[t]:
+                ids = [id for id in insert_rows_with_ids(cursor, t, header, insertion_input)]
+                with csv_reader(file, delim=delim) as input_again:
+                    # re-read the input file, but this time we know the lastrowid's from each line inserted
+                    for T_id, row in itertools.izip(ids, input_again):
+                        for R, columns in refs[t]:
+                            fk_id[(R, t, tuple(row[c] for c in columns))] = T_id
+            else:
+                insert_rows(cursor, t, header, insertion_input)
 
-def insert_rows(cursor, table, header, rows):
-    return cursor.executemany("""
+def _insert_query(table, header):
+    return """
         INSERT INTO {table} ({column_str}) VALUES ({qmarks})
     """.format(
         table=table,
         column_str=comma_join(header), 
-        qmarks=comma_join(len(header)*['?']),
-    ), rows)
+        qmarks=comma_join(len(header)*['?']))
+
+def insert_rows(cursor, table, header, rows):
+    return cursor.executemany(_insert_query(table, header), rows)
+
+def insert_rows_with_ids(cursor, table, header, rows):
+    """
+    Insert rows into table, and also return the lastrowid's of each inserted row
+    """
+    for row in rows:
+        cursor.execute(_insert_query(table, header), row)
+        yield cursor.lastrowid
 
 def merge_dict(d1, d2):
     return dict(d1.items() + d2.items())
@@ -140,7 +163,7 @@ def check_table(metadata, table, extra_info=''):
     if table not in metadata:
         raise RuntimeError(("no such table {table} exists" + extra_info).format(**locals()))
 
-def check_mapping(metadata, mapping):
+def check_mapping(metadata, m, T_columns, R_columns):
     """
     For a mapping:
         R: x_1, ..., x_n => T
@@ -149,18 +172,18 @@ def check_mapping(metadata, mapping):
         2. T has an auto_increment key
         3. columns are in R and T
     """
-    extra_info = ' in the mapping {mapping}'.format(**locals()) 
-    R = mapping['table']
-    T = mapping['autoincrement_table']
-    columns = mapping['columns']
+    extra_info = ' in the mapping {m}'.format(**locals()) 
+    R = m['table']
+    T = m['auto_increment_table']
+    columns = m['columns']
     # 1.
     check_table(metadata, R, extra_info=extra_info)
     check_table(metadata, T, extra_info=extra_info)
     # 2.
     if 'auto_increment_field' not in metadata[T]:
-        raise RuntimeError("the table {T} has no auto_increment field but one is required" + extra_info)
+        raise RuntimeError(( "the table {T} has no auto_increment field but one is required" ).format(**locals()) + extra_info )
     # 3.
-    if not set(columns).issubset(set(metadata[T]['columns']).intersection(metadata[R]['columns'])):
+    if not set(columns).issubset(set(T_columns).intersection(R_columns)):
         raise RuntimeError("mapping columns must be a subset of both {R} and {T}".format(**locals()) + extra_info)
 
 def table_metadata(db):
@@ -184,10 +207,21 @@ def table_metadata(db):
     for row in cursor:
         table = get(tables, row['TABLE_NAME'])
         if row['COLUMN_KEY'] == 'PRI' and re.search(r"auto_increment", row['EXTRA']):
-            table['autoincrement_field'] = row['COLUMN_NAME']
+            table['auto_increment_field'] = row['COLUMN_NAME']
         columns = get(table, 'columns', default=list)
         columns.append(row['COLUMN_NAME'])
     return tables
+
+class csv_reader:
+    def __init__(self, file, delim=","):
+        self.file = file
+        self.delim = delim
+    def __enter__(self):
+        self.input = fileinput.FileInput([self.file])
+        self.reader = csv.DictReader(self.input, delimiter=self.delim)
+        return self.reader
+    def __exit__(self, *args):
+        self.input.close()
 
 # Parsing code for handling the --map option
 
@@ -195,7 +229,7 @@ def tokenize(string):
     """
     tokenize("R_1: x, => T") = ['R_1', ':', 'x', ',', '=>', 'T'] 
     """
-    return [x for x in re.split(r"(:|,)|\s+", string) if x is not None and x is not '']
+    return [x for x in re.split(r"(:|,|\.)|\s+", string) if x is not None and x is not '']
 
 def parse(parser, string):
     return parser.parse(tokenize(string))
@@ -214,16 +248,16 @@ parse(mapping, "R_1: x, => T")
 = 
 { 
     'table'               : 'R_1',
-    'keys'                : ['x'],
-    'autoincrement_table' : 'T',
+    'columns'             : ['x'],
+    'auto_increment_table' : 'T',
 }
 """
 mapping = ( 
     identifier + skip(a(':')) + separated(identifier, a(',')) + skip(a('=>')) + identifier 
 ) >> (lambda result: {
     'table'               : result[0],
-    'keys'                : result[1],
-    'autoincrement_table' : result[2],
+    'columns'             : result[1],
+    'auto_increment_table' : result[2],
 })
 
 ignore = (

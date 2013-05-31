@@ -15,7 +15,7 @@ class test_load_dsv(unittest.TestCase, DatabaseTestMixin):
         if self.drop_after_test:
             self.drop()
 
-    def load_dsv_test(self, schema=None, files=None, assertion=None, *args, **kwargs):
+    def _load_dsv_test(self, schema=None, files=None, assertion=None, *args, **kwargs):
         self.schema = schema 
         self.connect()
         with tmp_dir() as directory:
@@ -46,7 +46,7 @@ class test_load_dsv(unittest.TestCase, DatabaseTestMixin):
                     ( "z1", "x1" ),
                 ]
             )
-        self.load_dsv_test(
+        self._load_dsv_test(
             schema="""
                 CREATE TABLE T ( x text, y text );
                 CREATE TABLE R_1 ( z text, x text );
@@ -69,13 +69,87 @@ class test_load_dsv(unittest.TestCase, DatabaseTestMixin):
         """
         Test ignoring the insertion of certain fields.
         """
-        self.drop_after_test = False
+        def assertion():
+            self.assertEqual(
+                self.select(table='T', columns=["x", "y"]), 
+                [
+                    ( None, "y1" ),
+                    ( None, "y2" ),
+                ]
+            )
+            self.assertEqual(
+                self.select(table='R_1', columns=["z",  "x"]), 
+                [
+                    ( "z1", None ),
+                ]
+            )
+        self._load_dsv_test(
+            schema="""
+                CREATE TABLE T ( x text, y text );
+                CREATE TABLE R_1 ( z text, x text );
+            """,
+            files=[
+                ['T.dsv', [
+                    [ "x",  "y" ],
+                    [ "x1", "y1" ],
+                    [ "x2", "y2" ],
+                ]],
+                ['R_1.dsv', [
+                    [ "z",  "x" ],
+                    [ "z1", "x1" ],
+                ]],
+            ],
+            assertion=assertion,
+            ignore_strings=['T.x', 'R_1.x'],
+        )
 
     def test_id(self):
         """
         Test mapping back to a single auto_increment table.
         """
-        self.drop_after_test = False
+        def assertion():
+            self.assertEqual(
+                self.select(table='T', columns=["id", "x", "y"]), 
+                [
+                    ( 1, "x1", "y1" ),
+                    ( 2, "x2", "y2" ),
+                ]
+            )
+            self.assertEqual(
+                self.select(table='R_1', columns=["z", "x", "T_id"]), 
+                [
+                    ( "z1", None, 1 ),
+                ]
+            )
+        self._load_dsv_test(
+            schema="""
+                CREATE TABLE T ( 
+                    id bigint auto_increment primary key, 
+                    x text, 
+                    y text
+                );
+                CREATE TABLE R_1 ( 
+                    z text, 
+                    x text,
+                    T_id bigint, 
+                    foreign key (T_id) references T(id)
+                );
+            """,
+            files=[
+                ['T.dsv', [
+                    [ "x",  "y" ],
+                    [ "x1", "y1" ],
+                    [ "x2", "y2" ],
+                ]],
+                ['R_1.dsv', [
+                    [ "z",  "x" ],
+                    [ "z1", "x1" ],
+                ]],
+            ],
+            assertion=assertion,
+            ignore_strings=['R_1.x'],
+            mapping_strings=['R_1: x => T'],
+        )
 
 if __name__ == '__main__':
     unittest.main()

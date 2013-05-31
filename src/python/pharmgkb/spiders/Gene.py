@@ -160,11 +160,13 @@ class BaseGenotypeSpider(FormRequestSpider, BaseSpider):
     def init_items(self, **kwargs):
         drug_recommendation = items.drug_recommendation()
         genotype_phenotype = items.genotype_phenotype()
-        return drug_recommendation, genotype_phenotype
+        genotype_drug_recommendation = items.genotype_drug_recommendation()
+        return drug_recommendation, genotype_phenotype, genotype_drug_recommendation
 
-    def yield_items(self, genotype_phenotype, drug_recommendation):
+    def yield_items(self, genotype_phenotype, drug_recommendation, genotype_drug_recommendation):
         yield genotype_phenotype
         yield drug_recommendation
+        yield genotype_drug_recommendation 
 
     def parse_form_response(self, response, **kwargs):
         hxs = HtmlXPathSelector(response)
@@ -172,7 +174,7 @@ class BaseGenotypeSpider(FormRequestSpider, BaseSpider):
         if len(hxs.select('//text()').re('This guideline does not contain recommendations')) != 0:
             return
 
-        drug_recommendation, genotype_phenotype = self.init_items(**kwargs)
+        drug_recommendation, genotype_phenotype, genotype_drug_recommendation = self.init_items(**kwargs)
 
         def strip_title(t):
             t = t.strip()
@@ -205,7 +207,7 @@ class BaseGenotypeSpider(FormRequestSpider, BaseSpider):
             if title == 'Phenotype (Genotype)':
                 genotype_phenotype['phenotype_genotype'] = value
 
-        for item in self.yield_items(genotype_phenotype, drug_recommendation):
+        for item in self.yield_items(genotype_phenotype, drug_recommendation, genotype_drug_recommendation):
             yield item
         if unused_genotype_data['values'] != {}:
             yield unused_genotype_data
@@ -235,7 +237,13 @@ class HaplotypeGenotypeSpider(BaseGenotypeSpider):
             haplotype_name2=kwargs['haplotype_name2'],
             gene_name=kwargs['gene_name'],
         )
-        return drug_recommendation, genotype_phenotype
+        genotype_drug_recommendation = items.genotype_drug_recommendation(
+            haplotype_name1=kwargs['haplotype_name1'],
+            haplotype_name2=kwargs['haplotype_name2'],
+            gene_name=kwargs['gene_name'],
+            drug_name=kwargs['drug_name'],
+        )
+        return drug_recommendation, genotype_phenotype, genotype_drug_recommendation
 
 class SnpGenotypeSpider(BaseGenotypeSpider):
     name = "SnpGenotype"
@@ -261,9 +269,13 @@ class SnpGenotypeSpider(BaseGenotypeSpider):
         genotype_phenotype = items.genotype_phenotype(
             gene_name=kwargs['gene_name'],
         )
-        return drug_recommendation, genotype_phenotype
+        genotype_drug_recommendation = items.genotype_drug_recommendation(
+            gene_name=kwargs['gene_name'],
+            drug_name=kwargs['drug_name'],
+        )
+        return drug_recommendation, genotype_phenotype, genotype_drug_recommendation
 
-    def yield_items(self, genotype_phenotype_defaults, drug_recommendation_defaults):
+    def yield_items(self, genotype_phenotype_defaults, drug_recommendation_defaults, genotype_drug_recommendation_defaults):
         # use gene_haplotype_matrix to generate all possible Genotype's consisting of alleles found in self.genotype_name
         snp_id = self.kwargs['snp_id']
         allele1 = self.kwargs['genotype_name'][0]
@@ -285,5 +297,13 @@ class SnpGenotypeSpider(BaseGenotypeSpider):
                     haplotype_name2=haplotype_name2,
                 ),
             )
+            genotype_drug_recommendation = items.copy_item_fields(
+                genotype_drug_recommendation_defaults,
+                items.genotype_drug_recommendation(
+                    haplotype_name1=haplotype_name1,
+                    haplotype_name2=haplotype_name2,
+                ),
+            )
             yield drug_recommendation
             yield genotype_phenotype
+            yield genotype_drug_recommendation

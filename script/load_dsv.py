@@ -99,40 +99,39 @@ def load_dsv(db, files, mapping_strings=[], ignore_strings=[], delim=","):
         columns = m['columns']
         refs[T].append( (R, tuple(columns)) ) 
         fks[R].append( (T, tuple(columns)) )
+    # a mapping from a referencing table, an auto_increment table it references, and field values through which the referencing happened, to an auto_increment value in T.
+    # R, T, [v1, ..., vn] -> T.id
+    fk_id = {}
 
     # (R, X) -> Bool
     ignore_field = collections.defaultdict(lambda: False)
     for s in ignore_strings:
         ignore_field[tuple(parse(ignore, s))] = True
 
+    def rows_for_insert(file):
+        with csv_reader(file, delim=delim) as input:
+            unignored = [f for f in input.fieldnames if not ignore_field[(t, f)]]
+            foreign_keys = [T + "_id" for T, t_fields in fks[t]]
+            header = unignored + foreign_keys 
+            # the first row is the header
+            yield header 
+            for row in input:
+                fk_ids = [fk_id[(t, T, tuple(row[f] for f in t_fields))] for T, t_fields in fks[t]]
+                yield [row[f] for f in unignored] + fk_ids
 
     cursor = db.cursor()
-    # a mapping from a referencing table, an auto_increment table it references, and field values through which the referencing happened, to an auto_increment value in T.
-    # R, T, [v1, ..., vn] -> T.id
-    fk_id = {}
     for t, file in zip(tables, files):
-        # input = get_input(file)
-        with csv_reader(file, delim=delim) as input:
-            def rows_for_insert():
-                unignored = [f for f in input.fieldnames if not ignore_field[(t, f)]]
-                foreign_keys = [T + "_id" for T, t_fields in fks[t]]
-                header = unignored + foreign_keys 
-                # the first row is the header
-                yield header 
-                for row in input:
-                    fk_ids = [fk_id[(t, T, tuple(row[f] for f in t_fields))] for T, t_fields in fks[t]]
-                    yield [row[f] for f in unignored] + fk_ids
-            insertion_input = rows_for_insert()
-            header = insertion_input.next()
-            if 'auto_increment_field' in metadata[t]:
-                ids = [id for id in insert_rows_with_ids(cursor, t, header, insertion_input)]
-                with csv_reader(file, delim=delim) as input_again:
-                    # re-read the input file, but this time we know the lastrowid's from each line inserted
-                    for T_id, row in itertools.izip(ids, input_again):
-                        for R, columns in refs[t]:
-                            fk_id[(R, t, tuple(row[c] for c in columns))] = T_id
-            else:
-                insert_rows(cursor, t, header, insertion_input)
+        insertion_input = rows_for_insert(file)
+        header = insertion_input.next()
+        if 'auto_increment_field' in metadata[t]:
+            ids = [id for id in insert_rows_with_ids(cursor, t, header, insertion_input)]
+            with csv_reader(file, delim=delim) as input:
+                # re-read the input file, but this time we know the lastrowid's from each line inserted
+                for T_id, row in itertools.izip(ids, input):
+                    for R, columns in refs[t]:
+                        fk_id[(R, t, tuple(row[c] for c in columns))] = T_id
+        else:
+            insert_rows(cursor, t, header, insertion_input)
 
 def _insert_query(table, header):
     return """
@@ -253,7 +252,7 @@ parse(mapping, "R_1: x, => T")
 }
 """
 mapping = ( 
-    identifier + skip(a(':')) + separated(identifier, a(',')) + skip(a('=>')) + identifier 
+    identifier + skip(a(':')) + separated(identifier, skip(a(','))) + skip(a('=>')) + identifier 
 ) >> (lambda result: {
     'table'               : result[0],
     'columns'             : result[1],

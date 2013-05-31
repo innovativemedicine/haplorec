@@ -63,6 +63,8 @@ class genotype_drug_recommendation(Item):
     haplotype_name1 = Field()
     haplotype_name2 = Field()
     # drug_recommendation_id = Field()
+    # non-mysql fields (needed to resolve drug_recommendation_id mappings)
+    drug_name = Field()
 
 # end of mysql tables
 

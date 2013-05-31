@@ -20,10 +20,10 @@ CREATE TABLE drug_recommendation (
     -- respectively) so this will just have to be enforced by whoever is inserting data.
     id bigint not null auto_increment,
     drug_name varchar({{SQL_DRUG_NAME_LENGTH}}),
-    implications varchar({{SQL_IMPLICATIONS_LENGTH}}),
-    recommendation varchar({{SQL_RECOMMENDATION_LENGTH}}),
-    classification varchar({{SQL_CLASSIFICATION_LENGTH}}),
-    diplotype_egs varchar({{SQL_DIPLOTYPE_EGS_LENGH}}),
+    implications LONGTEXT,
+    recommendation LONGTEXT,
+    classification LONGTEXT,
+    diplotype_egs LONGTEXT,
     primary key (id)
 ) {{SQL_ENGINE}};
 

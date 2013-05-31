@@ -309,3 +309,6 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
       see http://dev.mysql.com/doc/refman/5.0/en/storage-requirements.html ( Storage Requirements for String Types )
 - change varchar fields to text fields where appropriate (e.g. drug_recommendation.recommendation)
   - figure where to do this by simply looking at errors spewed out by mysql after statistics gathering
+
+- make a normalization wrapper for certain fields (phenotype_name) in scrapy items to lower case the string, and remove trailing 
+  periods

@@ -1,3 +1,5 @@
+import os
+
 # Scrapy settings for pharmgkb project
 #
 # For simplicity, this file contains only the most important settings by
@@ -20,6 +22,7 @@ DOWNLOAD_DELAY = 1
 ITEM_PIPELINES = [
         'pharmgkb.pipelines.CsvPipeline',
 ]
+CSV_OUTPUT_DIR = os.environ.get('CSV_OUTPUT_DIR', '.')
 
 HTTPCACHE_ENABLED = True
 HTTPCACHE_DIR = 'cache'

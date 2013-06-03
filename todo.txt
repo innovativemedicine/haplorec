@@ -312,3 +312,6 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
 
 - make a normalization wrapper for certain fields (phenotype_name) in scrapy items to lower case the string, and remove trailing 
   periods
+- for genotype_phenotype fields with collisions, merge descriptions
+
+- load data

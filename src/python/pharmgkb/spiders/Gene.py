@@ -197,11 +197,11 @@ class BaseGenotypeSpider(FormRequestSpider, BaseSpider):
                 drug_recommendation['classification'] = title[1]               
                 drug_recommendation['recommendation'] = value
             elif title == 'Phenotype (Genotype)' and kwargs['location'] not in phenotype_exceptions:
-                genotype_phenotype['phenotype_name'] = value
+                genotype_phenotype['phenotype_name'] = items.process.phenotype_name(value)
             elif title == 'Implications':
                 drug_recommendation['implications'] = value
             elif kwargs['location'] in phenotype_exceptions and title == phenotype_exceptions[kwargs['location']]:
-                genotype_phenotype['phenotype_name'] = value
+                genotype_phenotype['phenotype_name'] = items.process.phenotype_name(value)
             else:
                 unused_genotype_data['values'][title] = value
             if title == 'Phenotype (Genotype)':

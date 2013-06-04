@@ -316,3 +316,4 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
 
 - load data
 - figure out how to represent the "snp's we care about (aaron)" when determining a gene haplotype
+- make drug recommendation's viewable (with annotated links to view more info on the drug recommendation)

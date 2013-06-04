@@ -111,6 +111,16 @@ public class Report {
     }
 
     private static def report(Map kwargs = [:], groovy.sql.Sql sql) {
+        Map aliases = [
+            PATIENT_ID      : 'SAMPLE_ID',
+            GENE_NAME       : 'GENE',
+            DRUG_NAME       : 'DRUG',
+            PHENOTYPE_NAME  : 'PHENOTYPE',
+            HAPLOTYPE_NAME1 : 'HAPLOTYPE1',
+            HAPLOTYPE_NAME2 : 'HAPLOTYPE2',
+            HAPLOTYPE_NAME  : 'HAPLOTYPE',
+            SNP_ID          : 'RS#',
+        ]
         Row.changeKeys(
             haplorec.util.sql.Report.condensedJoin(
                 [
@@ -120,11 +130,9 @@ public class Report {
             ),
             to: { header, h ->
                 // remove table prefix (e.g. job_patient_variant.snp_id => snp_id)
-                h.replaceAll(/^[^.]+\.(.*)/, { it[1] })
-                 // convert underscore to camelcase with the first letter capitalized (e.g. snp_id => SnpId)
-                 .replaceAll(/(^|_)(\w)/, { it[2].toUpperCase() })
-                 // make any "Id" suffixes all capitals (e.g. SnpId => SnpID)
-                 .replaceAll(/(Id)$/, { it[1].toUpperCase() }) 
+                def k = h.replaceAll(/^[^.]+\.(.*)/, { it[1] })
+                         .toUpperCase()
+                aliases.get(k, k)
             },
         )
     }

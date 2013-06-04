@@ -8,13 +8,9 @@ from scrapy.item import Item, Field
 import process
 
 class PharmgkbItem(Item):
-    # define the fields for your item here like:
-    # name = Field()
     pass
 
 class GeneDrugPairItem(Item):
-    # define the fields for your item here like:
-    # name = Field()
     gene_drug_pairs = Field()
     # status = Field()
     # author_contact = Field()
@@ -29,7 +25,7 @@ class GeneItem(Item):
 # mysql tables
 
 class drug_recommendation(Item):
-    primary_key = set([ 'id' ])
+    primary_key = set([ 'drug_name', 'gene_name', 'haplotype_name1', 'haplotype_name2' ])
     # mysql fields
     drug_name = Field()
     implications = Field()
@@ -65,6 +61,7 @@ class genotype_phenotype(Item):
     phenotype_genotype = Field()
 
 class genotype_drug_recommendation(Item):
+    primary_key = set([ 'gene_name', 'haplotype_name1', 'haplotype_name2', 'drug_name' ])
     gene_name = Field()
     haplotype_name1 = Field()
     haplotype_name2 = Field()

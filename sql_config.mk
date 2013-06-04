@@ -1,30 +1,27 @@
 # will probably calculate these using sample datasets in the future (2 * max length seen)
 
 MAXLEN_HEURISTIC = $(shell bc <<< "$(1)*2")
+# NOTE: max key size is 3072 bytes (http://docs.oracle.com/cd/E17952_01/refman-5.5-en/innodb-restrictions.html)
+VARCHAR_MAXLEN = 200 
 
 # haplotype
-export SQL_HAPLOTYPE_NAME_LENGTH = 50
-export SQL_GENE_NAME_LENGTH = $(call MAXLEN_HEURISTIC,71)
+export SQL_HAPLOTYPE_NAME_LENGTH = $(VARCHAR_MAXLEN)
+export SQL_GENE_NAME_LENGTH = $(VARCHAR_MAXLEN)
 # gene_haplotype_variant 
-export SQL_HAPLOTYPE_ID_LENGTH = 50
-export SQL_SNP_ID_LENGTH = $(call MAXLEN_HEURISTIC,71)
-export SQL_ALLELE_LENGTH = $(call MAXLEN_HEURISTIC,56)
+export SQL_HAPLOTYPE_ID_LENGTH = $(VARCHAR_MAXLEN)
+export SQL_SNP_ID_LENGTH = $(VARCHAR_MAXLEN)
+export SQL_ALLELE_LENGTH = $(VARCHAR_MAXLEN)
 # drug_recommendation
-export SQL_DRUG_NAME_LENGTH = 50
-export SQL_IMPLICATIONS_LENGTH = 50
-export SQL_RECOMMENDATION_LENGTH = 50
-export SQL_CLASSIFICATION_LENGTH = 50
-export SQL_DIPLOTYPE_EGS_LENGTH = 50
-export SQL_DIPLOTYPE_EGS_LENGH = 50
+export SQL_DRUG_NAME_LENGTH = $(VARCHAR_MAXLEN)
 # phenotype
 export SQL_PHENOTYPE_NAME_LENGTH = $(call MAXLEN_HEURISTIC,143)
 # job 
-export SQL_JOB_NAME_LENGTH = 50
+export SQL_JOB_NAME_LENGTH = $(VARCHAR_MAXLEN)
 
 # job tables
 
-export SQL_PATIENT_ID_LENGTH = 50
-export SQL_PHYSICAL_CHROMOSOME_LENGTH = 50
+export SQL_PATIENT_ID_LENGTH = $(VARCHAR_MAXLEN)
+export SQL_PHYSICAL_CHROMOSOME_LENGTH = $(VARCHAR_MAXLEN)
 
 MYSQL_ENGINE_TYPE := InnoDB
 CUBRID_ENGINE_TYPE :=

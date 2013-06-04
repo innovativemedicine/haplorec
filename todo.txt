@@ -315,3 +315,4 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
 - for genotype_phenotype fields with collisions, merge descriptions
 
 - load data
+- figure out how to represent the "snp's we care about (aaron)" when determining a gene haplotype

@@ -17,8 +17,10 @@ def main():
     y2 1  3
 
     Outputs:
-    {x2="2"} -> y1
-    {x2="3"} -> y2
+    y1
+        x2=2   
+    y2
+        x2=3
     """)
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument('file', nargs='?')
@@ -27,21 +29,25 @@ def main():
     args = parser.parse_args()
     
     input = fileinput.FileInput([args.file] if args.file is not None else [])
-    reader = csv.reader(input)
-    column_names = input.next()
+    reader = csv.reader(input, delimiter=args.delim)
+    column_names = reader.next()
     row_names = []
     rows = []
     i = 1
-    for r in input:
+    for r in reader:
         if not args.no_row_names:
-            row_names.push(r[0])
-            rows.push(r[1:])
+            row_names.append(r[0])
+            rows.append(r[1:])
         else:
-            row_names.push(i)
-            rows.push(r)
+            row_names.append(i)
+            rows.append(r)
             i += 1
     input.close()
-    matrix_row_keys(column_names, row_names, rows)
+    K = matrix_row_keys(column_names, row_names, rows)
+    for row_name in row_names:
+        print row_name
+        for key in K[row_name]:
+            print '\t' + ', '.join("{x} = {v}".format(x=x, v=v) for x, v in key)
 
 def matrix_row_keys(column_names, row_names, rows):
     X = dict((x, {}) for x in column_names)

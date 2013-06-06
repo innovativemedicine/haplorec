@@ -28,32 +28,31 @@ class test_matrix_row_keys(unittest.TestCase):
         """
         5x4 matrix where each row is uniquely determined by one key.
         """
-        self.assertEqual(
-            matrix_row_keys(column_names(4), row_names(5), [
-                [1, 2, 3, 4],
-                [2, 2, 3, 4],
-                [1, 2, 3, 5],
-                [2, 2, 3, 5],
-                [2, 3, 3, 5],
-            ]), 
-            {
-                'y1': set([
-                    frozenset([('x1', 1), ('x4', 4)]),
-                ]),
-                'y2': set([
-                    frozenset([('x1', 2), ('x4', 4)]),
-                ]),
-                'y3': set([
-                    frozenset([('x1', 1), ('x4', 5)]),
-                ]),
-                'y4': set([
-                    frozenset([('x1', 2), ('x2', 2), ('x4', 5)]),
-                ]),
-                'y5': set([
-                    frozenset([('x2', 3)]),
-                ]),
-            }
-        )
+        got = matrix_row_keys(column_names(4), row_names(5), [
+            [1, 2, 3, 4],
+            [2, 2, 3, 4],
+            [1, 2, 3, 5],
+            [2, 2, 3, 5],
+            [2, 3, 3, 5],
+        ]) 
+        expect = {
+            'y1': set([
+                frozenset([('x1', 1), ('x4', 4)]),
+            ]),
+            'y2': set([
+                frozenset([('x1', 2), ('x4', 4)]),
+            ]),
+            'y3': set([
+                frozenset([('x1', 1), ('x4', 5)]),
+            ]),
+            'y4': set([
+                frozenset([('x1', 2), ('x2', 2), ('x4', 5)]),
+            ]),
+            'y5': set([
+                frozenset([('x2', 3)]),
+            ]),
+        }
+        self.assertEqual(got, expect)
 
     def test_multiple_keys(self):
         """
@@ -112,7 +111,7 @@ class test_matrix_row_keys(unittest.TestCase):
             }
         )
 
-
+    # can we have two equally sized non-mutually exclusive keys?
 
 if __name__ == '__main__':
     unittest.main()

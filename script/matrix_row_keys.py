@@ -44,7 +44,6 @@ def main():
     matrix_row_keys(column_names, row_names, rows)
 
 def matrix_row_keys(column_names, row_names, rows):
-    # X = collections.defaultdict(lambda: collections.defaultdict(set))
     X = dict((x, {}) for x in column_names)
     for y, row in izip(row_names, rows):
         for x, v in izip(column_names, row): 
@@ -54,36 +53,53 @@ def matrix_row_keys(column_names, row_names, rows):
 
     def intrsct(keys, X_y, key, remaining, R):
         if len(R) == 1:
+            remove = None
+            for k in keys:
+                intr = k.intersection(key)
+                if len(intr) == len(key) == len(k):
+                    # key == k
+                    return
+                elif len(intr) == len(key):
+                    # key subsetof k
+                    remove = k
+                    break
+                elif len(intr) == len(k):
+                    # k subsetof key
+                    return
+                # else: disjoint (pass)
+            if remove is not None:
+                keys.remove(remove)
             keys.add(frozenset(key))
         elif len(R) == 0 or len(remaining) == 0:
             pass
         else:
-            # intersect R with the remaining sets containing y
-            I = [(i, R.intersection(X_y[i][1])) for i in remaining]
-            m = min(len(intr) for (i, intr) in I)
-            for i, intr in I:
-                if len(intr) == m:
-                    k = key.copy()
-                    rem = remaining.copy()
-                    k.add(i)
-                    rem.remove(i)
-                    intrsct(keys, X_y, k, rem, intr)
-            return keys
+            examined = set()
+            for i in remaining:
+                examined.add(i)
+                intr = R.intersection(X_y[i][1])
+                if len(intr) < min(len(R), len(X_y[i][1])):
+                    intrsct(
+                        keys,
+                        X_y,
+                        key.union([i]),
+                        remaining.difference(examined),
+                        intr,
+                    )
 
     # y -> { { (x, v) } }
-    # K = collections.defaultdict(set)
     K = {}
+    remaining = set(xrange(0, len(column_names)))
     for y, row in izip(row_names, rows):
         X_y = [ifilter(lambda (v, ys): y in ys, X[x].iteritems()).next() for x in column_names]
         keys = set()
-        m = min(len(R) for (v, R) in X_y)
         for i, (v, R) in enumerate(X_y):
-            if len(R) == m:
-                remaining = set(xrange(0, len(column_names)))
-                # find the smallest set containing row_name
-                key = set([i])
-                remaining.remove(i)
-                intrsct(keys, X_y, key, remaining, R)
+            intrsct(
+                keys,
+                X_y,
+                set([i]),
+                remaining.difference([i]),
+                R,
+            )
         K[y] = set(
             frozenset((column_names[i], X_y[i][0]) for i in k) for k in keys
         )

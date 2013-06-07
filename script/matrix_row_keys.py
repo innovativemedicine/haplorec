@@ -94,10 +94,10 @@ def matrix_row_keys(column_names, row_names, rows):
 
     # y -> { { (x, v) } }
     K = {}
-    remaining = set(xrange(0, len(column_names)))
     for y, row in izip(row_names, rows):
         X_y = [ifilter(lambda (v, ys): y in ys, X[x].iteritems()).next() for x in column_names]
         keys = set()
+        remaining = set(xrange(0, len(column_names)))
         for i, (v, R) in enumerate(X_y):
             intrsct(
                 keys,
@@ -106,6 +106,7 @@ def matrix_row_keys(column_names, row_names, rows):
                 remaining.difference([i]),
                 R,
             )
+            remaining.remove(i)
         K[y] = set(
             frozenset((column_names[i], X_y[i][0]) for i in k) for k in keys
         )

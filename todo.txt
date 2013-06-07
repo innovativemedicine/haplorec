@@ -317,3 +317,12 @@ o (GeneName, HaplotypeName, HaplotypeName) -> PhenotypeName ; any reliable sourc
 - load data
 - figure out how to represent the "snp's we care about (aaron)" when determining a gene haplotype
 - make drug recommendation's viewable (with annotated links to view more info on the drug recommendation)
+
+CYPD26:
+133 rows (haplotypes)
+151 columns (snp_ids)
+
+
+use banker's sequence subset enumeration algorithm to enumerate smallest subsets first, then add a check whether the current key is a superset of an existing 
+key (if so, stop searching)
+(assumption is that real keys are small in size, so we won't need to create big subsets)

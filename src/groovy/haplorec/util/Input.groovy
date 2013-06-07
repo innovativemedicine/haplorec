@@ -134,8 +134,8 @@ class Input {
                             fs = fields
                         } else {
                             try {
-                                fs = fieldNumbers.collect { i -> fields[i - 1] }
-                            } catch (ArrayIndexOutOfBoundsException e) {
+                                fs = fieldNumbers.collect { i -> fields.get(i - 1) }
+                            } catch (IndexOutOfBoundsException e) {
                                 if (kwargs.header != null) {
                                     throw new InvalidInputException("Expected ${fieldNumbers.max()} columns matching header ${kwargs.header}, but saw ${fields.size()} columns at line $lineNo: $fields", e)
                                 } else {

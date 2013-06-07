@@ -326,3 +326,5 @@ CYPD26:
 use banker's sequence subset enumeration algorithm to enumerate smallest subsets first, then add a check whether the current key is a superset of an existing 
 key (if so, stop searching)
 (assumption is that real keys are small in size, so we won't need to create big subsets)
+
+remove job_patient_variant_chromosome (i.e. 'ambiguous variants')

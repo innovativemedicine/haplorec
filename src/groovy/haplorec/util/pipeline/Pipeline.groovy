@@ -10,13 +10,14 @@ public class Pipeline {
     private static def unambiguousVariants = 'job_patient_chromosome_variant'
     // table alias to SQL table name mapping
     private static def defaultTables = [
-        variant            : ambiguousVariants,
-        genePhenotype      : 'job_patient_gene_phenotype',
-        genotype           : 'job_patient_genotype',
-        geneHaplotype      : 'job_patient_gene_haplotype',
-        genotypeDrugRecommendation : 'job_patient_genotype_drug_recommendation',
+        variant                     : ambiguousVariants,
+        variantGene                 : '_job_patient_variant_gene',
+        genePhenotype               : 'job_patient_gene_phenotype',
+        genotype                    : 'job_patient_genotype',
+        geneHaplotype               : 'job_patient_gene_haplotype',
+        genotypeDrugRecommendation  : 'job_patient_genotype_drug_recommendation',
         phenotypeDrugRecommendation : 'job_patient_phenotype_drug_recommendation',
-        job                : 'job',
+        job                         : 'job',
     ]
     private static Set<CharSequence> jobTables = new HashSet(defaultTables.grep { it.key != 'job' }.collect { it.value } + [ambiguousVariants, unambiguousVariants])
 	
@@ -128,6 +129,23 @@ public class Pipeline {
 		def query = withSetContainsQuery(setContainsQuery)
         Sql.selectAs(sql, query, insertColumns,
 			intoTable: kwargs.geneHaplotype,
+			sqlParams: kwargs.sqlParams,
+            saveAs: 'existing')
+    }
+
+    static def variantToVariantGene(Map kwargs = [:], groovy.sql.Sql sql) {
+        def columns = ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'gene_name', 'zygosity']
+        Sql.selectAs(sql, """
+            select ${columns.join(', ')}
+            from ${kwargs.variant}
+            join (
+                select distinct gene_name, snp_id
+                from gene_haplotype_variant 
+            ) gene_snp
+            using (snp_id)
+            where job_id = :job_id
+            """, columns,
+			intoTable: kwargs.variantGene,
 			sqlParams: kwargs.sqlParams,
             saveAs: 'existing')
     }
@@ -312,9 +330,12 @@ public class Pipeline {
             }
         }
         dependencies.variant.rule = { ->
-            // NOTE: we don't need to specify the variants dependency rule since it can 
-            // only come from "raw" input, and "raw" input rules are guaranteed to be 
-            // built before we build the dependency graph.
+            if (kwargs.containsKey('variants')) {
+                buildFromInput('variant', kwargs.variants)
+                if (kwargs.ambiguousVariants) {
+                    variantToVariantGene(pipelineKwargs, sql)
+                }
+            }
         }
         dependencies.genePhenotype.rule = { ->
             genotypeToGenePhenotype(pipelineKwargs, sql)
@@ -323,12 +344,14 @@ public class Pipeline {
         // For datasets that are already provided, insert their rows into the approriate job_* table, and mark them as built
         Set<Dependency> built = []
         dependencies.keySet().each { table ->
-			def inputKey = table + 's'
-			if (kwargs[inputKey] != null) {
-				def input = kwargs[inputKey]
-                buildFromInput(table, input)
-                built.add(dependencies[table])
-			}
+            if (table != 'variant') {
+                def inputKey = table + 's'
+                if (kwargs[inputKey] != null) {
+                    def input = kwargs[inputKey]
+                    buildFromInput(table, input)
+                    built.add(dependencies[table])
+                }
+            }
         }
 
         dependencies.phenotypeDrugRecommendation.build(built)

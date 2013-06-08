@@ -239,13 +239,12 @@ public class PipelineTest extends DBTest {
          * phenotype, and a 'drug' recommendation
          */
 		drugRecommendationsTest(
-			ambiguousVariants: false,
 			variants: [
 				// TODO: i think select disinct is messing up selectWhereEitherSetContains for this testcase; figure out how to work around that
-				['patient1', 'chr1A', 'rs1', 'A'],
-				['patient1', 'chr1A', 'rs2', 'G'],
-				['patient1', 'chr1B', 'rs1', 'A'],
-				['patient1', 'chr1B', 'rs2', 'G'],
+				['patient1', 'chr1A', 'rs1', 'A', 'hom'],
+				['patient1', 'chr1A', 'rs2', 'G', 'hom'],
+				['patient1', 'chr1B', 'rs1', 'A', 'hom'],
+				['patient1', 'chr1B', 'rs2', 'G', 'hom'],
 			])
 		assertJobTable('job_patient_gene_haplotype', [
 			[1, 'patient1', 'g1', '*1'],
@@ -266,17 +265,16 @@ public class PipelineTest extends DBTest {
          * multiple patients.
          */
         drugRecommendationsTest(
-			ambiguousVariants: false,
 			variants: [
-				['patient2', 'chr1A', 'rs1', 'A'],
-				['patient2', 'chr1A', 'rs2', 'G'],
-				['patient2', 'chr1B', 'rs1', 'A'],
-				['patient2', 'chr1B', 'rs2', 'G'],
+				['patient2', 'chr1A', 'rs1', 'A', 'hom'],
+				['patient2', 'chr1A', 'rs2', 'G', 'hom'],
+				['patient2', 'chr1B', 'rs1', 'A', 'hom'],
+				['patient2', 'chr1B', 'rs2', 'G', 'hom'],
                 // from last test's job 1
-				['patient1', 'chr1A', 'rs1', 'A'],
-				['patient1', 'chr1A', 'rs2', 'G'],
-				['patient1', 'chr1B', 'rs1', 'A'],
-				['patient1', 'chr1B', 'rs2', 'G'],
+				['patient1', 'chr1A', 'rs1', 'A', 'hom'],
+				['patient1', 'chr1A', 'rs2', 'G', 'hom'],
+				['patient1', 'chr1B', 'rs1', 'A', 'hom'],
+				['patient1', 'chr1B', 'rs2', 'G', 'hom'],
 			])
 		assertJobTable('job_patient_gene_haplotype', [
 			[2, 'patient2', 'g1', '*1'],
@@ -339,10 +337,9 @@ public class PipelineTest extends DBTest {
         insertSampleData(sampleData)
 
         drugRecommendationsTest(
-            ambiguousVariants: false,
             variants: [
-                ['patient1', 'chr1A', 'rs1', 'A'],
-                ['patient1', 'chr1B', 'rs1', 'A'],
+                ['patient1', 'chr1A', 'rs1', 'A', 'hom'],
+                ['patient1', 'chr1B', 'rs1', 'A', 'hom'],
             ])
         assertJobTable('job_patient_gene_haplotype', [
             [1, 'patient1', 'g1', '*1'],
@@ -477,10 +474,9 @@ public class PipelineTest extends DBTest {
         insertSampleData(sampleData)
 
         drugRecommendationsTest(
-            ambiguousVariants: false,
             variants: [
-                ['patient1', 'chr1A', 'rs1', 'A'],
-                ['patient1', 'chr1B', 'rs1', 'A'],
+                ['patient1', 'chr1A', 'rs1', 'A', 'hom'],
+                ['patient1', 'chr1B', 'rs1', 'A', 'hom'],
             ])
         assertJobTable('job_patient_gene_haplotype', [
             // should be empty

@@ -197,13 +197,6 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
     index (gene_name, haplotype_name1, haplotype_name2),
 {%- endcall %}
 
-{% call job_patient_table('chromosome_variant') -%}
-    physical_chromosome varchar({{SQL_PHYSICAL_CHROMOSOME_LENGTH}}),
-    snp_id varchar({{SQL_SNP_ID_LENGTH}}),
-    allele varchar({{SQL_ALLELE_LENGTH}}),
-    index (snp_id, allele),
-{%- endcall %}
-
 -- ambiguous as to what physical_chromosome variants occur on
 {% call job_patient_table('variant') -%}
     physical_chromosome varchar({{SQL_PHYSICAL_CHROMOSOME_LENGTH}}),

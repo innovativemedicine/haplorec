@@ -6,11 +6,9 @@ import haplorec.util.dependency.DependencyGraphBuilder
 import haplorec.util.dependency.Dependency
 
 public class Pipeline {
-    private static def ambiguousVariants = 'job_patient_variant'
-    private static def unambiguousVariants = 'job_patient_chromosome_variant'
     // table alias to SQL table name mapping
     private static def defaultTables = [
-        variant                     : ambiguousVariants,
+        variant                     :  'job_patient_variant',
         variantGene                 : '_job_patient_variant_gene',
         genePhenotype               : 'job_patient_gene_phenotype',
         genotype                    : 'job_patient_genotype',
@@ -19,7 +17,7 @@ public class Pipeline {
         phenotypeDrugRecommendation : 'job_patient_phenotype_drug_recommendation',
         job                         : 'job',
     ]
-    private static Set<CharSequence> jobTables = new HashSet(defaultTables.grep { it.key != 'job' }.collect { it.value } + [ambiguousVariants, unambiguousVariants])
+    private static Set<CharSequence> jobTables = new HashSet(defaultTables.grep { it.key != 'job' }.collect { it.value })
 	
     private static def setDefaultKwargs(Map kwargs) {
         def setDefault = { property, defaultValue -> 
@@ -88,10 +86,10 @@ public class Pipeline {
      * - call this function with kwargs.variants = iterable over file
      * - mark heterozygous calls as ignored, and specify the reason why they are ignored
      */
-    static def ambiguousVariantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
+    static def variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
         def columns = ['job_id', 'patient_id', 'gene_name', 'haplotype_name']
-        variantToGeneHaplotype(kwargs, sql, columns) { setContainsQuery -> """\
+        _variantToGeneHaplotype(kwargs, sql, columns) { setContainsQuery -> """\
             select ${columns.join(', ')} from (
                 $setContainsQuery
             ) s where
@@ -113,7 +111,7 @@ public class Pipeline {
 
     /* Implement the common code for unambiguous and ambiguous variants
      */
-    static private def variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql, insertColumns, Closure withSetContainsQuery) { setDefaultKwargs(kwargs)
+    static private def _variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql, insertColumns, Closure withSetContainsQuery) { setDefaultKwargs(kwargs)
         def setContainsQuery = Sql.selectWhereSetContains(
             sql,
             'gene_haplotype_variant',
@@ -148,17 +146,6 @@ public class Pipeline {
 			intoTable: kwargs.variantGene,
 			sqlParams: kwargs.sqlParams,
             saveAs: 'existing')
-    }
-
-    static def unambiguousVariantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
-        setDefaultKwargs(kwargs)
-        def columns = ['job_id',' patient_id',' gene_name', 'haplotype_name']
-        variantToGeneHaplotype(kwargs, sql, columns) { setContainsQuery -> """\
-            select ${columns.join(', ')} from (
-                $setContainsQuery
-            ) s
-            """
-        }
     }
 
     static def genotypeToGenotypeDrugRecommendation(Map kwargs = [:], groovy.sql.Sql sql) {
@@ -199,8 +186,6 @@ public class Pipeline {
 	}
 
     static def dependencyGraph(Map kwargs = [:]) {
-		if (kwargs.ambiguousVariants == null) { kwargs.ambiguousVariants = true }
-
         def tbl = tables(kwargs)
 
         def builder = new PipelineDependencyGraphBuilder()
@@ -241,15 +226,9 @@ public class Pipeline {
     }
 
     static def tables(Map kwargs = [:]) {
-		if (kwargs.ambiguousVariants == null) { kwargs.ambiguousVariants = true }
         // default job_* tables
         // dependency target -> sql table
 		def tbl = new LinkedHashMap(defaultTables)
-		if (kwargs.ambiguousVariants) {
-			tbl.variant = ambiguousVariants
-		} else {
-			tbl.variant = unambiguousVariants
-		}
         return tbl
     }
 	
@@ -257,7 +236,6 @@ public class Pipeline {
 	// - delete existing rows in a table before creating rows
 	// - optimization: figure out what tables are already "built" (select count(*) from $table where job_id = :job_id) and pass it to build()
 	static def drugRecommendations(Map kwargs = [:], groovy.sql.Sql sql) {
-		if (kwargs.ambiguousVariants == null) { kwargs.ambiguousVariants = true }
 		def tableKey = { defaultTable ->
 			defaultTable.replaceFirst(/^job_/,  "")
 						.replaceAll(/_(\w)/, { it[0][1].toUpperCase() })
@@ -323,18 +301,12 @@ public class Pipeline {
             geneHaplotypeToGenotype(pipelineKwargs, sql)
         }
         dependencies.geneHaplotype.rule = { ->
-            if (kwargs.ambiguousVariants) {
-                ambiguousVariantToGeneHaplotype(pipelineKwargs, sql)
-            } else {
-                unambiguousVariantToGeneHaplotype(pipelineKwargs, sql)
-            }
+            variantToGeneHaplotype(pipelineKwargs, sql)
         }
         dependencies.variant.rule = { ->
             if (kwargs.containsKey('variants')) {
                 buildFromInput('variant', kwargs.variants)
-                if (kwargs.ambiguousVariants) {
-                    variantToVariantGene(pipelineKwargs, sql)
-                }
+                variantToVariantGene(pipelineKwargs, sql)
             }
         }
         dependencies.genePhenotype.rule = { ->

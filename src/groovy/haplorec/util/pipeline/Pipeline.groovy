@@ -91,20 +91,25 @@ public class Pipeline {
         def columns = ['job_id', 'patient_id', 'gene_name', 'haplotype_name']
         _variantToGeneHaplotype(kwargs, sql, columns) { setContainsQuery -> """\
             select ${columns.join(', ')} from (
-                $setContainsQuery
-            ) s where
-            s.gene_name not in (
-                select gene_name
-                from ${kwargs.variant} v
-                join gene_haplotype_variant using (snp_id)
-                where 
-                    zygosity     = 'het'        and 
-                    v.job_id     = :job_id      and 
-                    v.job_id     = s.job_id     and 
-                    v.patient_id = s.patient_id
-                group by job_id, patient_id, gene_name
-                having count(distinct snp_id) > 1
-            )
+                select ${(columns + ['physical_chromosome']).join(', ')} from (
+                    $setContainsQuery
+                ) s 
+                where
+                s.gene_name not in (
+                    select gene_name
+                    from ${kwargs.variant} v
+                    join gene_haplotype_variant using (snp_id)
+                    where 
+                        zygosity     = 'het'        and 
+                        v.job_id     = :job_id      and 
+                        v.job_id     = s.job_id     and 
+                        v.patient_id = s.patient_id
+                    group by job_id, patient_id, gene_name
+                    having count(distinct snp_id) > 1
+                )
+                group by job_id, patient_id, gene_name, physical_chromosome
+                having count(*) = 1
+            ) t
             """
         }
     }
@@ -114,15 +119,15 @@ public class Pipeline {
     static private def _variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql, insertColumns, Closure withSetContainsQuery) { setDefaultKwargs(kwargs)
         def setContainsQuery = Sql.selectWhereSetContains(
             sql,
-            'gene_haplotype_variant',
             kwargs.variant,
+            'gene_haplotype_variant',
 			['snp_id', 'allele'],
-            tableAGroupBy: ['gene_name', 'haplotype_name'],
-            tableBGroupBy: ['job_id', 'patient_id', 'physical_chromosome'],
+            tableAGroupBy: ['job_id', 'patient_id', 'physical_chromosome'],
+            tableBGroupBy: ['gene_name', 'haplotype_name'],
 			select: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name', 'haplotype_name'],
             saveAs: 'query', 
             sqlParams: kwargs.sqlParams,
-			tableBWhere: { t -> "${t}.job_id = :job_id" },
+			tableAWhere: { t -> "${t}.job_id = :job_id" },
         )
 		def query = withSetContainsQuery(setContainsQuery)
         Sql.selectAs(sql, query, insertColumns,

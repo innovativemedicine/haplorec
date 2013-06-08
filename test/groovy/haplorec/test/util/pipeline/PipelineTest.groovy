@@ -461,9 +461,9 @@ public class PipelineTest extends DBTest {
 
     }
 	
-	void testGeneHaplotypeOnlySubset() {
+	void testGeneHaplotypeStrictSubsetUnambiguous() {
 		
-        /* Test that haplotypes where we only have some (i.e. a strict subset) of the variants needed to call it are ignored.
+        /* Test that haplotypes where we have a strict subset of the variants needed to call it, and it isn't ambiguous, are accepted.
          */
         def sampleData = [
             gene_haplotype_variant: [
@@ -479,10 +479,37 @@ public class PipelineTest extends DBTest {
                 ['patient1', 'chr1B', 'rs1', 'A', 'hom'],
             ])
         assertJobTable('job_patient_gene_haplotype', [
+            [1, 'patient1', 'g1', '*1'],
+			[1, 'patient1', 'g1', '*1'],
+        ])
+
+	}
+
+	void testGeneHaplotypeStrictSubsetAmbiguous() {
+		
+        /* Test that haplotypes where we have a strict subset of the variants needed to call it, but it's ambiguous, are rejected.
+         */
+        def sampleData = [
+            gene_haplotype_variant: [
+                ['g1', '*1', 'rs1', 'A'],
+                ['g1', '*1', 'rs2', 'G'],
+                ['g1', '*2', 'rs1', 'A'],
+                ['g1', '*2', 'rs2', 'T'],
+            ],
+        ]
+        insertSampleData(sampleData)
+
+        drugRecommendationsTest(
+            variants: [
+                ['patient1', 'chr1A', 'rs1', 'A', 'hom'],
+                ['patient1', 'chr1B', 'rs1', 'A', 'hom'],
+            ])
+        assertJobTable('job_patient_gene_haplotype', [
             // should be empty
         ])
 
 	}
+
 
 	void testGenotypeOnlySubset() {
 		

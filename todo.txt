@@ -322,9 +322,19 @@ CYPD26:
 133 rows (haplotypes)
 151 columns (snp_ids)
 
+- remove job_patient_variant_chromosome (i.e. 'ambiguous variants')
 
-use banker's sequence subset enumeration algorithm to enumerate smallest subsets first, then add a check whether the current key is a superset of an existing 
-key (if so, stop searching)
-(assumption is that real keys are small in size, so we won't need to create big subsets)
+- make sure the report still works (i.e. only reports variants found in the input)
+- make more test cases for testing variants
+  - snps are a subset of a haplotype, but one snp is unique (unknown haplotype)
+- loadtest
+  - figure out how best to time queries / detect slow running queries (slow log, somehow add time start / stop to 
+    rules, or use a profiling tool)
+  - add indexes
+    - for selectWhereSetContains, determine how groupby clause is affected by indexes
+  - stats:
+    - samples per file ~ 22
+    - variants per sample ~ 23
 
-remove job_patient_variant_chromosome (i.e. 'ambiguous variants')
+- remove patient links, and make it show up as sample id
+- figure out why variantToGeneHaplotype isn't using variantGene

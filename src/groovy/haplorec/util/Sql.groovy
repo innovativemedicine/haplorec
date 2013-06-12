@@ -306,11 +306,26 @@ class Sql {
 
         def qmarks = { n -> (['?'] * n).join(', ') }
         if (rowSize != 0) {
-            sql.withBatch("insert into ${table}${(columns.size() > 0) ? "(${columns.join(', ')})" : ''} values (${qmarks(rowSize)})".toString()) { ps ->
-                rows.each { r -> 
-                    ps.addBatch(r) 
+            File infile = File.createTempFile(table, '.tsv')
+            try {
+                infile.withPrintWriter() { w ->
+                    rows.each { r ->
+                        // TOOD: handle quoting
+                        w.println(r.join('\t'))
+                    }
                 }
-            }
+                sql.execute "load data local infile :infile into table ${table}${(columns.size() > 0) ? "(${columns.join(', ')})" : ''}", [infile: infile.absolutePath]
+            } finally {
+                infile.delete()
+            } 
+            // NOTE: this batch insert thing is slow.
+            // String stmt = "insert into ${table}${(columns.size() > 0) ? "(${columns.join(', ')})" : ''} values (${qmarks(rowSize)})"
+            // 
+            // sql.withBatch(stmt) { ps ->
+            //     rows.each { r -> 
+            //         ps.addBatch(r) 
+            //     }
+            // }
         } else {
             rows.each { r ->
                 sql.execute("insert into ${table}() values (${qmarks(r.size())})", r)

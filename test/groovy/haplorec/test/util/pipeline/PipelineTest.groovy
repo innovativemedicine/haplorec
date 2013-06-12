@@ -1,9 +1,14 @@
 package haplorec.test.util.pipeline
 
+import org.junit.Ignore;
+
 import haplorec.test.util.DBTest
+import haplorec.test.util.TimedTest
 
 import haplorec.util.Input.InvalidInputException
 import haplorec.util.Sql
+
+import haplorec.util.dependency.Dependency
 
 import haplorec.util.pipeline.Pipeline
 import haplorec.util.pipeline.PipelineInput
@@ -11,6 +16,7 @@ import haplorec.util.pipeline.Report
 
 import groovy.util.GroovyTestCase
 
+@Mixin(TimedTest)
 public class PipelineTest extends DBTest {
 	
 	def TEST_DB = "haplorec_test"
@@ -54,8 +60,10 @@ public class PipelineTest extends DBTest {
             def (table, data) = [kv.key, kv.value]
             if (data instanceof java.util.List) {
                 Sql.insert(sql, table, data)
-            } else {
+            } else if (data instanceof Map) {
                 Sql.insert(sql, table, data.columns, data.rows)
+            } else {
+                Sql.insert(sql, table, Sql.tableColumns(sql, table), data)
             }
         }
     }
@@ -485,6 +493,57 @@ public class PipelineTest extends DBTest {
 
 	}
 
+	void testGeneHaplotypeStrictSubsetUnambiguousPlusExtra() {
+		
+        /* Test that haplotypes where we have a strict subset of the variants needed to call it, and it isn't ambiguous, and we have some extra unrelated snp, 
+         * are accepted.
+         */
+        def sampleData = [
+            gene_haplotype_variant: [
+                ['g1', '*1', 'rs1', 'A'],
+                ['g1', '*1', 'rs2', 'G'],
+            ],
+        ]
+        insertSampleData(sampleData)
+
+        drugRecommendationsTest(
+            variants: [
+                ['patient1', 'chr1A', 'rs1', 'A', 'hom'],
+                ['patient1', 'chr1B', 'rs1', 'A', 'hom'],
+                ['patient1', 'chr1A', 'rs3', 'A', 'hom'],
+                ['patient1', 'chr1B', 'rs3', 'A', 'hom'],
+            ])
+        assertJobTable('job_patient_gene_haplotype', [
+            [1, 'patient1', 'g1', '*1'],
+			[1, 'patient1', 'g1', '*1'],
+        ])
+
+	}
+
+    void testUniqueHaplotypes() {
+        /* Test that haplotypes where we have a strict subset of snp_id's, but some unqiue alleles are ignored.
+         * TODO: ideally we should report unique haplotypes, probably by adding a new node in the graph.
+         */
+        def sampleData = [
+            gene_haplotype_variant: [
+                ['g1', '*1', 'rs1', 'A'],
+                ['g1', '*1', 'rs2', 'G'],
+            ],
+        ]
+        insertSampleData(sampleData)
+
+        drugRecommendationsTest(
+            variants: [
+                ['patient1', 'chr1A', 'rs1', 'A', 'hom'],
+                ['patient1', 'chr1B', 'rs1', 'A', 'hom'],
+                ['patient1', 'chr1A', 'rs2', 'T', 'hom'],
+                ['patient1', 'chr1B', 'rs2', 'T', 'hom'],
+            ])
+        assertJobTable('job_patient_gene_haplotype', [
+            // should be empty
+        ])
+    }
+
 	void testGeneHaplotypeStrictSubsetAmbiguous() {
 		
         /* Test that haplotypes where we have a strict subset of the variants needed to call it, but it's ambiguous, are rejected.
@@ -648,5 +707,123 @@ public class PipelineTest extends DBTest {
         ])
 
 	}
+
+    /* Load tests.
+     */
+
+    void testLoadLotsOfVariants() {
+        /* Test loading of variant data in job_patient_variant / _job_patient_variant_gene.
+         */
+        // number of job_patient_variant records == 2 physical_chromosome * 10 samples * 5000 variantsPerSample
+        def variants = generateVariants(5000, 10)
+        withSlowQueryLog(sql) {
+            shouldRunWithin(seconds: 5) {
+                drugRecommendationsTest(variants: variants)
+            }
+        }
+    }
+
+    void pipelineStageTest(stage) {
+        Set<Dependency> built = []
+        def job = Pipeline.pipelineJob(built)
+    }
+
+    void buildDependencies(job, stage, built) {
+        job[stage].dependsOn.each { d ->
+            d.build(built)
+        }
+    }
+
+//    @Ignore("too slow")
+//    void testGeneHaplotype() {
+//        /* Test the variantToGeneHaplotype stage of the pipeline.
+//         */
+//        def variantsPerHaplotype = 200
+//        def haplotypesPerGene = 100
+//        def genes = 10
+//        // number of gene_haplotype_variant records
+//        def variants = variantsPerHaplotype * haplotypesPerGene * genes
+//        def sampleData = [
+//            gene_haplotype_variant: generateGeneHaplotypeVariant(variantsPerHaplotype, haplotypesPerGene, genes),
+//        ]
+//        insertSampleData(sampleData)
+//
+//        def samples = 10
+//        def variantsPerSample = variants / samples
+//        def job = Pipeline.pipelineJob(sql, variants: generateVariants(variantsPerSample, samples))
+//        Set<Dependency> built = []
+//        buildDependencies(job, 'geneHaplotype', built)
+//        
+//        withSlowQueryLog(sql) {
+//            shouldRunWithin(seconds: 5) {
+//                job.geneHaplotype.build(built)
+//            }
+//        }
+//    }
+
+    def generateGeneHaplotypeVariant(variantsPerHaplotype, haplotypesPerGene, genes) {
+        def haplotypes = haplotypesPerGene * genes
+        def variants = variantsPerHaplotype * haplotypes
+        String allele = 'A'
+        def rs = 1
+        return new Object() {
+            def each(Closure f) {
+                (1..genes).each { gene ->
+                    (1..haplotypesPerGene).each { haplotype ->
+                        (1..variantsPerHaplotype).each { variant ->
+                            f(["g$gene", "*$haplotype", "rs$rs", allele].collect { it.toString() })
+                            rs += 1
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    def generateVariants(variantsPerSample, samples) {
+        def variants = variantsPerSample * samples
+        def rs = 1
+        String allele = 'A'
+        String zygosity = "hom"
+        return new Object() {
+            def each(Closure f) {
+                (1..samples).each { sample ->
+                    (1..variantsPerSample).each { variant ->
+                        ['A', 'B'].each { physical_chromosome ->
+                            f(["sample$sample", physical_chromosome, "rs$rs", allele, zygosity].collect { it.toString() })
+                        }
+                        rs += 1
+                    }
+                }
+            }
+        }
+    }
+
+    // def generateVariants(Map kwargs = [:], int n) {
+    //     if (kwargs.variantsPerSample == null) { kwargs.variantsPerSample = 1000 }
+    //     def rows = []
+    //     def rs = 0
+    //     def sample = 0
+    //     String allele = 'A'
+    //     String zygosity = "hom"
+    //     (0..n-1).each { i ->
+    //         String physical_chromosome
+    //         if (i % 2 == 0) {
+    //             rs += 1
+    //             physical_chromosome = 'A' 
+    //         } else {
+    //             physical_chromosome = 'B' 
+    //         }
+    //         String patient_id = 'sample' + sample
+    //         String snp_id = "rs$rs"
+    //         // String allele = ['A', 'C', 'G', 'T'][(rs - 1) % 4]
+    //         rows.add([patient_id, physical_chromosome, snp_id, allele, zygosity])
+    //         if (i % 2 == 1 && rs == kwargs.variantsPerSample) {
+    //             rs = 0
+    //             sample += 1
+    //         }
+    //     }
+    //     rows
+    // }
 
 }

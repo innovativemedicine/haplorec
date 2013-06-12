@@ -1,8 +1,8 @@
 package haplorec.test.util
 
-import haplorec.util.pipeline.Pipeline;
+import haplorec.util.Sql
 
-import groovy.sql.Sql;
+import groovy.sql.Sql
 import groovy.util.GroovyTestCase
 
 public class DBTest extends GroovyTestCase {
@@ -39,7 +39,7 @@ public class DBTest extends GroovyTestCase {
         return sqlInstance(kwargs, db) 
     }
 
-    def tearDownDB(db, Sql sql) {
+    def tearDownDB(db, groovy.sql.Sql sql) {
         sql.execute "drop database ${db}".toString()
         sql.close()
     }
@@ -47,17 +47,13 @@ public class DBTest extends GroovyTestCase {
     def sqlInstance(Map kwargs = [:], db = null) {
         setKwargsDefaults(kwargs)
         def url = "jdbc:mysql://${kwargs.host}:${kwargs.port}"
-        def sql = Sql.newInstance((db == null) ? url : "${url}/${db}", kwargs.user, kwargs.password)
+        def sql = groovy.sql.Sql.newInstance((db == null) ? url : "${url}/${db}", kwargs.user, kwargs.password)
         assert sql != null
         return sql
     }
 
     def insert(sql, table, columns, rows) {
-        if (rows.size() > 0) {
-            sql.withBatch("insert into ${table}(${columns.join(', ')}) values (${(['?'] * columns.size()).join(', ')})".toString()) { ps ->
-                rows.each { r -> ps.addBatch(r) }
-            }
-        }
+        Sql.insert(sql, table, columns, rows)
     }
 
     def select(sql, table, columns) {
@@ -108,6 +104,53 @@ public class DBTest extends GroovyTestCase {
             tableNames.each { 
                 sql.execute "drop table if exists $it".toString()
             }
+        }
+    }
+
+    def withSlowQueryLog(Map kwargs = [:], sql, Closure doQueries) {
+        if (kwargs.longQueryTime == null) { kwargs.longQueryTime = 10 }
+        def defaultScope = 'GLOBAL'
+        def oldVar = { var -> "@old_$var" }
+        def setVar = { Map kw = [:], var, value ->
+            if (kw.scope == null) { kw.scope = defaultScope }
+            sql.execute "set ${oldVar(var)} = @@global.${var}".toString()
+            sql.execute "set ${kw.scope} ${var} = :value".toString(), [value: value]
+        }
+        def resetVar = { Map kw = [:], var ->
+            if (kw.scope == null) { kw.scope = defaultScope }
+            sql.execute "set ${kw.scope} ${var} = ${oldVar(var)}".toString()
+        }
+        File logfile
+        File dir
+        try {
+            // Hack to create a temporary directory: http://stackoverflow.com/questions/817420/how-can-i-create-a-temporary-folder-in-java
+            dir = File.createTempFile('logdir', '')
+            dir.delete()
+            dir.mkdir()
+            dir.setWritable(true, false)
+            logfile = File.createTempFile('slow_query_log', '.txt', dir)
+            logfile.setWritable(true, false)
+            println "LOGFILE == $logfile"
+            setVar('slow_query_log', 1)
+            setVar('slow_query_log_file', logfile.absolutePath)
+            setVar('log_queries_not_using_indexes', 1)
+            setVar('long_query_time', kwargs.longQueryTime)
+            doQueries()
+            // TODO: figure out if we need to flush the logs
+            sql.execute "FLUSH LOGS"
+        } finally {
+            println sql.rows("select @@slow_query_log, @@slow_query_log_file, @@log_queries_not_using_indexes, @@long_query_time")
+            // reset any modified mysql system variables and delete the logfile
+            resetVar('slow_query_log')
+            resetVar('slow_query_log_file')
+            resetVar('log_queries_not_using_indexes')
+            resetVar('long_query_time')
+            // if (logfile != null) {
+            //     logfile.delete()
+            // }
+            // if (dir != null) {
+            //     dir.delete()
+            // }
         }
     }
 

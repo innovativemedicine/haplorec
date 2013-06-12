@@ -91,11 +91,11 @@ public class Pipeline {
         def columns = ['job_id', 'patient_id', 'gene_name', 'haplotype_name']
         _variantToGeneHaplotype(kwargs, sql, columns) { setContainsQuery -> """\
             select ${columns.join(', ')} from (
-                select ${(columns + ['physical_chromosome']).join(', ')} from (
+                select job_id, patient_id, gene_name2 as gene_name, haplotype_name, physical_chromosome from (
                     $setContainsQuery
                 ) s 
                 where
-                s.gene_name not in (
+                s.gene_name2 not in (
                     select gene_name
                     from ${kwargs.variant} v
                     join gene_haplotype_variant using (snp_id)
@@ -107,7 +107,7 @@ public class Pipeline {
                     group by job_id, patient_id, gene_name
                     having count(distinct snp_id) > 1
                 )
-                group by job_id, patient_id, gene_name, physical_chromosome
+                group by job_id, patient_id, gene_name2, physical_chromosome
                 having count(*) = 1
             ) t
             """
@@ -119,12 +119,12 @@ public class Pipeline {
     static private def _variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql, insertColumns, Closure withSetContainsQuery) { setDefaultKwargs(kwargs)
         def setContainsQuery = Sql.selectWhereSetContains(
             sql,
-            kwargs.variant,
+            kwargs.variantGene,
             'gene_haplotype_variant',
-			['snp_id', 'allele'],
-            tableAGroupBy: ['job_id', 'patient_id', 'physical_chromosome'],
+			['gene_name', 'snp_id', 'allele'],
+            tableAGroupBy: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2'],
             tableBGroupBy: ['gene_name', 'haplotype_name'],
-			select: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name', 'haplotype_name'],
+			select: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2', 'haplotype_name'],
             saveAs: 'query', 
             sqlParams: kwargs.sqlParams,
 			tableAWhere: { t -> "${t}.job_id = :job_id" },
@@ -137,9 +137,10 @@ public class Pipeline {
     }
 
     static def variantToVariantGene(Map kwargs = [:], groovy.sql.Sql sql) {
-        def columns = ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'gene_name', 'zygosity']
+        def selectColumns = ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'gene_name', 'gene_name', 'zygosity']
+        def insertColumns = ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'gene_name', 'gene_name2', 'zygosity']
         Sql.selectAs(sql, """
-            select ${columns.join(', ')}
+            select ${selectColumns.join(', ')}
             from ${kwargs.variant}
             join (
                 select distinct gene_name, snp_id
@@ -147,7 +148,7 @@ public class Pipeline {
             ) gene_snp
             using (snp_id)
             where job_id = :job_id
-            """, columns,
+            """, insertColumns,
 			intoTable: kwargs.variantGene,
 			sqlParams: kwargs.sqlParams,
             saveAs: 'existing')
@@ -236,11 +237,8 @@ public class Pipeline {
 		def tbl = new LinkedHashMap(defaultTables)
         return tbl
     }
-	
-    // TODO: accept jobId to rerun parts of the pipeline 
-	// - delete existing rows in a table before creating rows
-	// - optimization: figure out what tables are already "built" (select count(*) from $table where job_id = :job_id) and pass it to build()
-	static def drugRecommendations(Map kwargs = [:], groovy.sql.Sql sql) {
+
+    static def pipelineJob(Map kwargs = [:], groovy.sql.Sql sql) {
 		def tableKey = { defaultTable ->
 			defaultTable.replaceFirst(/^job_/,  "")
 						.replaceAll(/_(\w)/, { it[0][1].toUpperCase() })
@@ -318,21 +316,30 @@ public class Pipeline {
             genotypeToGenePhenotype(pipelineKwargs, sql)
         }
 
-        // For datasets that are already provided, insert their rows into the approriate job_* table, and mark them as built
-        Set<Dependency> built = []
+        /* For datasets that are already provided, replace their rules with ones that insert their 
+         * rows into the approriate job_* table.
+         */
         dependencies.keySet().each { table ->
             if (table != 'variant') {
                 def inputKey = table + 's'
                 if (kwargs[inputKey] != null) {
                     def input = kwargs[inputKey]
-                    buildFromInput(table, input)
-                    built.add(dependencies[table])
+                    dependencies[table].rule = { ->
+                        buildFromInput(table, input)
+                    }
                 }
             }
         }
 
-        dependencies.phenotypeDrugRecommendation.build(built)
-        dependencies.genotypeDrugRecommendation.build(built)
+        return dependencies
+    }
+	
+	static def drugRecommendations(Map kwargs = [:], groovy.sql.Sql sql) {
+        def job = pipelineJob(kwargs, sql)
+        // For datasets that are already provided, insert their rows into the approriate job_* table, and mark them as built
+        Set<Dependency> built = []
+        job.phenotypeDrugRecommendation.build(built)
+        job.genotypeDrugRecommendation.build(built)
 	}
 	
     /* Return an iterator over the pipeline input
@@ -358,7 +365,9 @@ public class Pipeline {
             def tableReader = PipelineInput.tableAliasToTableReader(tableAlias)
             return tableReader(input)
         } else {
-            throw new IllegalArgumentException("Invalid input for table ${tableAlias}; expected a list of rows or a filepath but saw ${input}")
+			// assume its iterable (i.e. defines .each)
+			return input
+            // throw new IllegalArgumentException("Invalid input for table ${tableAlias}; expected a list of rows or a filepath but saw ${input}")
         }
     }
     

@@ -89,7 +89,19 @@ public class Pipeline {
     static def variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
         def columns = ['job_id', 'patient_id', 'gene_name', 'haplotype_name']
-        _variantToGeneHaplotype(kwargs, sql, columns) { setContainsQuery -> """\
+        def setContainsQuery = Sql.selectWhereSetContains(
+            sql,
+            kwargs.variantGene,
+            'gene_haplotype_variant',
+			['gene_name', 'snp_id', 'allele'],
+            tableAGroupBy: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2'],
+            tableBGroupBy: ['gene_name', 'haplotype_name'],
+			select: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2', 'haplotype_name'],
+            saveAs: 'query', 
+            sqlParams: kwargs.sqlParams,
+			tableAWhere: { t -> "${t}.job_id = :job_id" },
+        )
+        def query = """\
             select ${columns.join(', ')} from (
                 select job_id, patient_id, gene_name2 as gene_name, haplotype_name, physical_chromosome from (
                     $setContainsQuery
@@ -110,27 +122,8 @@ public class Pipeline {
                 group by job_id, patient_id, gene_name2, physical_chromosome
                 having count(*) = 1
             ) t
-            """
-        }
-    }
-
-    /* Implement the common code for unambiguous and ambiguous variants
-     */
-    static private def _variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql, insertColumns, Closure withSetContainsQuery) { setDefaultKwargs(kwargs)
-        def setContainsQuery = Sql.selectWhereSetContains(
-            sql,
-            kwargs.variantGene,
-            'gene_haplotype_variant',
-			['gene_name', 'snp_id', 'allele'],
-            tableAGroupBy: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2'],
-            tableBGroupBy: ['gene_name', 'haplotype_name'],
-			select: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2', 'haplotype_name'],
-            saveAs: 'query', 
-            sqlParams: kwargs.sqlParams,
-			tableAWhere: { t -> "${t}.job_id = :job_id" },
-        )
-		def query = withSetContainsQuery(setContainsQuery)
-        Sql.selectAs(sql, query, insertColumns,
+        """
+        Sql.selectAs(sql, query, columns,
 			intoTable: kwargs.geneHaplotype,
 			sqlParams: kwargs.sqlParams,
             saveAs: 'existing')

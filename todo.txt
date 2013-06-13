@@ -338,3 +338,23 @@ CYPD26:
 
 - remove patient links, and make it show up as sample id
 - figure out why variantToGeneHaplotype isn't using variantGene
+
+redo crappy query / optimization with variant_gene table, see if it makes things better
+add more outer query crap to see if it goes slow
+optimize more
+once it runs faster, then implement it
+
+fix test data so testGeneHaplotype returns results then see if optimization is sufficient
+
+fix test data to remove duplicate haplotypes
+
+fix test data so that we can scale up # of variants per sample without overscaling other things (variants per 
+haplotype, haplotypes per gene)
+
+concern: _job_patient_variant_gene table won't scale since it get filled with job_patient_variant * (# distinct gene, haplotype, snp)
+- try using a view and see if it uses indexes (i doubt it)
+
+implement selectWhereSetContains optimization:
+- insert counts_table records into a supplied table
+- after we use the helper tables in variantToGeneHaplotype, delete records with that job_id (we don't need them anymore)
+- figure out why s.gene_name2 not in (...) makes the query suck, and how to make it go faster / use a different query

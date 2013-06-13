@@ -93,17 +93,18 @@ public class Pipeline {
             sql,
             kwargs.variantGene,
             'gene_haplotype_variant',
-			['gene_name', 'snp_id', 'allele'],
-            tableAGroupBy: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2'],
-            tableBGroupBy: ['gene_name', 'haplotype_name'],
-			select: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2', 'haplotype_name'],
+			['gene_name', 'haplotype_name', 'snp_id', 'allele'],
+            tableAGroupBy: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2', 'haplotype_name2'],
+            // tableBGroupBy: ['haplotype_name'],
+            tableBGroupBy: [],
+			select: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2', 'haplotype_name2'],
             saveAs: 'query', 
             sqlParams: kwargs.sqlParams,
 			tableAWhere: { t -> "${t}.job_id = :job_id" },
         )
         def query = """\
             select ${columns.join(', ')} from (
-                select job_id, patient_id, gene_name2 as gene_name, haplotype_name, physical_chromosome from (
+                select job_id, patient_id, gene_name2 as gene_name, haplotype_name2 as haplotype_name, physical_chromosome from (
                     $setContainsQuery
                 ) s 
                 where
@@ -130,13 +131,13 @@ public class Pipeline {
     }
 
     static def variantToVariantGene(Map kwargs = [:], groovy.sql.Sql sql) {
-        def selectColumns = ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'gene_name', 'gene_name', 'zygosity']
-        def insertColumns = ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'gene_name', 'gene_name2', 'zygosity']
+        def selectColumns = ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'gene_name', 'gene_name', 'haplotype_name', 'haplotype_name', 'zygosity']
+        def insertColumns = ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'gene_name', 'gene_name2', 'haplotype_name', 'haplotype_name2', 'zygosity']
         Sql.selectAs(sql, """
             select ${selectColumns.join(', ')}
             from ${kwargs.variant}
             join (
-                select distinct gene_name, snp_id
+                select distinct gene_name, haplotype_name, snp_id
                 from gene_haplotype_variant 
             ) gene_snp
             using (snp_id)

@@ -77,6 +77,7 @@ CREATE TABLE gene_haplotype_variant (
     index snp_id_allele_idx (snp_id, allele),
     -- for variantToVariantGene
     index gene_name_snp_id_idx (gene_name, snp_id),
+    index haplotype_name_idx (haplotype_name),
     primary key (gene_name, haplotype_name, snp_id, allele)
 ) {{SQL_ENGINE}};
 
@@ -214,8 +215,11 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
     snp_id varchar({{SQL_SNP_ID_LENGTH}}),
     allele varchar({{SQL_ALLELE_LENGTH}}),
     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
+    haplotype_name varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
     -- non-set gene_name so we can group by it and select it in variantToGeneHaplotype
     gene_name2 varchar({{SQL_GENE_NAME_LENGTH}}),
+    haplotype_name2 varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
     zygosity char(3), 
-    index snp_id_allele_idx (gene_name, snp_id, allele),
+    index gene_name_haplotype_name_snp_id_allele_idx (gene_name, haplotype_name, snp_id, allele),
+    index job_pat_phys_gene_haplo_idx (job_id, patient_id, physical_chromosome, gene_name2, haplotype_name2),
 {%- endcall %}

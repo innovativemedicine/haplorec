@@ -57,6 +57,11 @@ class Sql {
 		}
 	}
 
+    /* Keyword arguments:
+     *
+     * intersectTable: the table in which to store the result of 'intersecting' tables A and B. Providing this will 
+     * speed up the intersect query.  The schema of the table should be tableAGroupBy + tableBGroupBy + ['group_count']. 
+     */
 	private static def intersectQuery(Map kwargs = [:], groovy.sql.Sql sql, tableA, tableB, setColumns, Closure countsTableWhere) {
         setDefaultKwargs(kwargs)
 		assert kwargs.tableAGroupBy != null || kwargs.tableBGroupBy != null
@@ -126,7 +131,8 @@ class Sql {
             // counts table is an existing table kwargs.intersectTable (probably with indexes on it to make it have faster access during group_count filtering)
             selectAs(sql, intersectQuery, groupBy + ['group_count'],
                 intoTable:kwargs.intersectTable,
-                saveAs:kwargs.saveAs)
+                saveAs:'existing',
+                sqlParams:kwargs.sqlParams)
             query = queryWithCountsTable(kwargs.intersectTable)
         }
 		return selectAs(sql, query, kwargs.select,

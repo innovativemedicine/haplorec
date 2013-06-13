@@ -358,3 +358,5 @@ implement selectWhereSetContains optimization:
 - insert counts_table records into a supplied table
 - after we use the helper tables in variantToGeneHaplotype, delete records with that job_id (we don't need them anymore)
 - figure out why s.gene_name2 not in (...) makes the query suck, and how to make it go faster / use a different query
+
+- large deletions are slow as hell...use a temporary table and just drop it

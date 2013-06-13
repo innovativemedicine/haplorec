@@ -88,6 +88,7 @@ public class Pipeline {
      */
     static def variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
+        def intersectTable = '_intersect__job_patient_variant_gene_gene_haplotype_variant'
         def columns = ['job_id', 'patient_id', 'gene_name', 'haplotype_name']
         def setContainsQuery = Sql.selectWhereSetContains(
             sql,
@@ -97,29 +98,32 @@ public class Pipeline {
             tableAGroupBy: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2', 'haplotype_name2'],
             // tableBGroupBy: ['haplotype_name'],
             tableBGroupBy: [],
+            intersectTable: intersectTable,
 			select: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2', 'haplotype_name2'],
             saveAs: 'query', 
             sqlParams: kwargs.sqlParams,
 			tableAWhere: { t -> "${t}.job_id = :job_id" },
         )
+                // NOTE: this where clause for filtering out calls made using too many heterozygous 
+                // snps slows things down too much; still need to figure that out.
+                // where
+                // s.gene_name2 not in (
+                //     select gene_name
+                //     from ${kwargs.variant} v
+                //     join gene_haplotype_variant using (snp_id)
+                //     where 
+                //         zygosity     = 'het'        and 
+                //         v.job_id     = :job_id      and 
+                //         v.job_id     = s.job_id     and 
+                //         v.patient_id = s.patient_id
+                //     group by job_id, patient_id, gene_name
+                //     having count(distinct snp_id) > 1
+                // )
         def query = """\
             select ${columns.join(', ')} from (
                 select job_id, patient_id, gene_name2 as gene_name, haplotype_name2 as haplotype_name, physical_chromosome from (
                     $setContainsQuery
                 ) s 
-                where
-                s.gene_name2 not in (
-                    select gene_name
-                    from ${kwargs.variant} v
-                    join gene_haplotype_variant using (snp_id)
-                    where 
-                        zygosity     = 'het'        and 
-                        v.job_id     = :job_id      and 
-                        v.job_id     = s.job_id     and 
-                        v.patient_id = s.patient_id
-                    group by job_id, patient_id, gene_name
-                    having count(distinct snp_id) > 1
-                )
                 group by job_id, patient_id, gene_name2, physical_chromosome
                 having count(*) = 1
             ) t
@@ -128,24 +132,38 @@ public class Pipeline {
 			intoTable: kwargs.geneHaplotype,
 			sqlParams: kwargs.sqlParams,
             saveAs: 'existing')
+        // cleanup the helper tables
+        cleanup(sql, intersectTable, kwargs.sqlParams.job_id)
+        cleanupTemp(sql, kwargs.variantGene)
+    }
+
+    static private def cleanup(groovy.sql.Sql sql, table, jobId) {
+        sql.execute "delete from $table where job_id = :job_id".toString(), [job_id: jobId]
+    }
+
+    static private def cleanupTemp(groovy.sql.Sql sql, table) {
+        sql.execute "drop table $table".toString()
     }
 
     static def variantToVariantGene(Map kwargs = [:], groovy.sql.Sql sql) {
-        def selectColumns = ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'gene_name', 'gene_name', 'haplotype_name', 'haplotype_name', 'zygosity']
-        def insertColumns = ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'gene_name', 'gene_name2', 'haplotype_name', 'haplotype_name2', 'zygosity']
-        Sql.selectAs(sql, """
-            select ${selectColumns.join(', ')}
-            from ${kwargs.variant}
-            join (
-                select distinct gene_name, haplotype_name, snp_id
-                from gene_haplotype_variant 
-            ) gene_snp
-            using (snp_id)
-            where job_id = :job_id
-            """, insertColumns,
-			intoTable: kwargs.variantGene,
-			sqlParams: kwargs.sqlParams,
-            saveAs: 'existing')
+        Sql.createTableFromExisting(sql, kwargs.variantGene,
+            query: """\
+            |select job_id, patient_id, physical_chromosome, snp_id, allele, gene_name, gene_name as gene_name2, haplotype_name, haplotype_name as haplotype_name2, zygosity
+            |from ${kwargs.variant}
+            |join (
+            |    select distinct gene_name, haplotype_name, snp_id
+            |    from gene_haplotype_variant 
+            |) gene_snp
+            |using (snp_id)
+            |where job_id = :job_id
+            """.stripMargin(),
+            sqlParams:kwargs.sqlParams,
+            temporary: true,
+            indexColumns: [
+                ['gene_name', 'haplotype_name', 'snp_id', 'allele'],
+                ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2', 'haplotype_name2'],
+            ],
+            saveAs: 'MyISAM')
     }
 
     static def genotypeToGenotypeDrugRecommendation(Map kwargs = [:], groovy.sql.Sql sql) {
@@ -303,8 +321,8 @@ public class Pipeline {
         dependencies.variant.rule = { ->
             if (kwargs.containsKey('variants')) {
                 buildFromInput('variant', kwargs.variants)
-                variantToVariantGene(pipelineKwargs, sql)
             }
+            variantToVariantGene(pipelineKwargs, sql)
         }
         dependencies.genePhenotype.rule = { ->
             genotypeToGenePhenotype(pipelineKwargs, sql)

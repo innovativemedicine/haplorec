@@ -734,35 +734,35 @@ public class PipelineTest extends DBTest {
         }
     }
 
-   void testGeneHaplotype() {
-       /* Test the variantToGeneHaplotype stage of the pipeline.
-        */
-       def variantsPerHaplotype = 151
-       def haplotypesPerGene = 132
-       // actual is 10
-       def genes = 100
-       // number of gene_haplotype_variant records
-       def variants = variantsPerHaplotype * haplotypesPerGene * genes
-       def sampleData = [
-           gene_haplotype_variant: generateGeneHaplotypeVariant(variantsPerHaplotype, haplotypesPerGene, genes),
-       ]
-       insertSampleData(sampleData)
+   // void testGeneHaplotype() {
+   //     /* Test the variantToGeneHaplotype stage of the pipeline.
+   //      */
+   //     def variantsPerHaplotype = 151
+   //     def haplotypesPerGene = 132
+   //     // actual is 10
+   //     def genes = 100
+   //     // number of gene_haplotype_variant records
+   //     def variants = variantsPerHaplotype * haplotypesPerGene * genes
+   //     def sampleData = [
+   //         gene_haplotype_variant: generateGeneHaplotypeVariant(variantsPerHaplotype, haplotypesPerGene, genes),
+   //     ]
+   //     insertSampleData(sampleData)
 
-       // actual is 379
-       // only the first 100 (genes) will have haplotypes
-       def samples = 379 // genes 
-       // actual is 22
-       def variantsPerSample = variantsPerHaplotype // variants / samples
-       def job = Pipeline.pipelineJob(sql, variants: generateVariants(variantsPerSample, samples))
-       Set<Dependency> built = []
-       buildDependencies(job, 'geneHaplotype', built)
-       
-       withSlowQueryLog(sql) {
-           shouldRunWithin(seconds: 5) {
-               job.geneHaplotype.build(built)
-           }
-       }
-   }
+   //     // actual is 379
+   //     // only the first 100 (genes) will have haplotypes
+   //     def samples = 379 // genes 
+   //     // actual is 22
+   //     def variantsPerSample = variantsPerHaplotype // variants / samples
+   //     def job = Pipeline.pipelineJob(sql, variants: generateVariants(variantsPerSample, samples))
+   //     Set<Dependency> built = []
+   //     buildDependencies(job, 'geneHaplotype', built)
+   //     
+   //     withSlowQueryLog(sql) {
+   //         shouldRunWithin(seconds: 5) {
+   //             job.geneHaplotype.build(built)
+   //         }
+   //     }
+   // }
 
     def generateGeneHaplotypeVariant(variantsPerHaplotype, haplotypesPerGene, genes) {
         def haplotypes = haplotypesPerGene * genes

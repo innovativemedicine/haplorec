@@ -2,7 +2,6 @@ package haplorec.test.util
 
 import haplorec.util.Sql
 
-import groovy.sql.Sql
 import groovy.util.GroovyTestCase
 
 public class DBTest extends GroovyTestCase {

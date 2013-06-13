@@ -102,15 +102,33 @@ class Sql {
             "counts_table.group_count", 
             tableCount(tableA, kwargs.tableAWhere, kwargs.tableAGroupBy), 
             tableCount(tableB, kwargs.tableBWhere, kwargs.tableBGroupBy))
-		def query = """\
-            |select distinct ${selectColumnStr('counts_table')} from (
-            |    select ${groupByColumnsStr}, count(*) as group_count
-            |    from ${tableB} join ${tableA} using (${setColumns.join(', ')})
-            |    ${(groupCountWhere != null) ? "where ${groupCountWhere}" : ''}
-            |    group by ${groupByColumnsStr} 
-            |) counts_table
+
+        def intersectQuery = """\
+            |select ${groupByColumnsStr}, count(*) as group_count
+            |from ${tableB} join ${tableA} using (${setColumns.join(', ')})
+            |${(groupCountWhere != null) ? "where ${groupCountWhere}" : ''}
+            |group by ${groupByColumnsStr} 
+        """.stripMargin()
+        def queryWithCountsTable = { countsTable -> """\
+            |select distinct ${selectColumnStr('counts_table')} from $countsTable counts_table
             |where 
             |    ${countsTableWhereStr}""".stripMargin()
+        }
+        def query
+        if (kwargs.intersectTable == null) {
+            // counts table is a derived table
+            query = queryWithCountsTable("""\
+                |(
+                |    $intersectQuery
+                |)
+            """.stripMargin())
+        } else {
+            // counts table is an existing table kwargs.intersectTable (probably with indexes on it to make it have faster access during group_count filtering)
+            selectAs(sql, intersectQuery, groupBy + ['group_count'],
+                intoTable:kwargs.intersectTable,
+                saveAs:kwargs.saveAs)
+            query = queryWithCountsTable(kwargs.intersectTable)
+        }
 		return selectAs(sql, query, kwargs.select,
 			intoTable:kwargs.intoTable,
 			indexColumns:kwargs.indexColumns,
@@ -306,7 +324,7 @@ class Sql {
 
         def qmarks = { n -> (['?'] * n).join(', ') }
         if (rowSize != 0) {
-            File infile = File.createTempFile(table, '.tsv')
+            File infile = File.createTempFile("${table}_table", '.tsv')
             try {
                 infile.withPrintWriter() { w ->
                     rows.each { r ->

@@ -360,6 +360,7 @@ implement selectWhereSetContains optimization:
 - figure out why s.gene_name2 not in (...) makes the query suck, and how to make it go faster / use a different query
 
 - large deletions are slow as hell...use a temporary table and just drop it
+  - can't do that, since selectWhereSetContains uses the temp table twice in a single query (mysql limitation)
 
 - change s.gene_name2 not in query to:
         select gene_name
@@ -376,6 +377,7 @@ and see if the index works its magic... really need to try with lots of heterozy
 
 figure out why defaults-file doesn't seem to be getting read... log file change
 
-create _job_patient_variant_gene inside variantToGeneHaplotype and make time comparsions between using an intermediate table for 
-set intersection vs just performing the enormous query as is
- 
+most other queries are basic joins / more selectWhereSetContains stuff....
+
+---
+run aaron's PGX file

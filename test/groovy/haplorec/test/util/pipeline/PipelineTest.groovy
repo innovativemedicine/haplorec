@@ -758,7 +758,7 @@ public class PipelineTest extends DBTest {
        buildDependencies(job, 'geneHaplotype', built)
        
        withSlowQueryLog(sql) {
-           shouldRunWithin(minutes: 2) {
+           shouldRunWithin(minutes: 5) {
                job.geneHaplotype.build(built)
            }
        }

@@ -208,6 +208,8 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
     -- zygosity is one of 'het' (for a heterozygous call) or 'hom' (for a homozygous call)
     zygosity char(3), 
     index snp_id_allele_idx (snp_id, allele),
+    -- to optimize the filtering out of haplotype calls that use too many heterozygous snp's
+    index job_pat_phys_zyg (job_id, patient_id, physical_chromosome, zygosity),
 {%- endcall %}
 
 -- optimization tables

@@ -38,15 +38,16 @@ class Sql {
 		def query = (kwargs.query != null) ?
 			kwargs.query :
 			"select ${kwargs.columns.join(', ')} from ${kwargs.existingTable}".toString()
-		// create the temporary table using the right datatypes
-        _sql kwargs, sql.&executeUpdate, "create ${(kwargs.temporary) ? 'temporary' : ''} table $newTable as ($query) limit 0"
-        if (!kwargs.dontRunQuery) {
+        def createTablePrefix = "create ${(kwargs.temporary) ? 'temporary' : ''} table $newTable engine=${kwargs.saveAs}"
+        if (kwargs.dontRunQuery) {
+            // create the temporary table using the right datatypes
+            _sql kwargs, sql.&executeUpdate, "$createTablePrefix as ($query) limit 0"
+        } else {
             // insert our query
-            def qInsertInto = insertIntoSql(kwargs, newTable, query)
-            _sql kwargs, sql.&executeUpdate, qInsertInto
+            // def qInsertInto = insertIntoSql(kwargs, newTable, query)
+            // _sql kwargs, sql.&executeUpdate, qInsertInto
+            _sql kwargs, sql.&executeUpdate, "$createTablePrefix as ($query)"
         }
-		// create the temporary table using the right datatypes
-		sql.executeUpdate "alter table $newTable engine = ${kwargs.saveAs}".toString()
 		if (kwargs.indexColumns != null) {
 			def createIndex = { cols -> sql.executeUpdate "alter table $newTable add index (${cols.join(', ')})".toString() }
 			if (kwargs.indexColumns[0] instanceof java.util.List) {
@@ -293,7 +294,7 @@ class Sql {
 		}
 	}
 	
-    private static def engines = ['MEMORY', 'MyISAM']
+    private static def engines = ['MEMORY', 'MyISAM', 'InnoDB']
     private static def validSaveAs = engines + ['query', 'existing']
     private static def selectAs(Map kwargs = [:], groovy.sql.Sql sql, query, columns) {
         setDefaultKwargs(kwargs)

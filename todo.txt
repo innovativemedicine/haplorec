@@ -360,3 +360,22 @@ implement selectWhereSetContains optimization:
 - figure out why s.gene_name2 not in (...) makes the query suck, and how to make it go faster / use a different query
 
 - large deletions are slow as hell...use a temporary table and just drop it
+
+- change s.gene_name2 not in query to:
+        select gene_name
+        from job_patient_variant v
+        join gene_haplotype_variant using (snp_id)
+        where 
+        v.zygosity     = 'het' and
+        v.job_id     = 1 and
+        v.patient_id = s.patient_id and
+		v.physical_chromosome = s.physical_chromosome
+        group by gene_name
+        having count(*) > 1
+and see if the index works its magic... really need to try with lots of heterozygous snps though...
+
+figure out why defaults-file doesn't seem to be getting read... log file change
+
+create _job_patient_variant_gene inside variantToGeneHaplotype and make time comparsions between using an intermediate table for 
+set intersection vs just performing the enormous query as is
+ 

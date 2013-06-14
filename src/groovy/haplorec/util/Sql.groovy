@@ -60,8 +60,9 @@ class Sql {
 
     /* Keyword arguments:
      *
-     * intersectTable: the table in which to store the result of 'intersecting' tables A and B. Providing this will 
-     * speed up the intersect query.  The schema of the table should be tableAGroupBy + tableBGroupBy + ['group_count']. 
+     * intersectTable: the table in which to store the result of 'intersecting' tables A and B. Providing this will slow down 
+     * the intersect query, but it could be useful if you wanted to reuse the results of the intersect table for multiple 
+     * selectWhereSetContains queries.  The schema of the table should be tableAGroupBy + tableBGroupBy + ['group_count']. 
      */
 	private static def intersectQuery(Map kwargs = [:], groovy.sql.Sql sql, tableA, tableB, setColumns, Closure countsTableWhere) {
         setDefaultKwargs(kwargs)

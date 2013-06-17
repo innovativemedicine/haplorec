@@ -335,9 +335,17 @@ class Sql {
             File infile = File.createTempFile("${table}_table", '.tsv')
             try {
                 infile.withPrintWriter() { w ->
-                    rows.each { r ->
+                    rows.each { row ->
                         // TOOD: handle quoting
-                        w.println(r.join('\t'))
+                        w.println(row.collect { column ->
+                            if (column == null) {
+                                // We need to use \N in the data file to represent a NULL value in mysql
+                                // http://stackoverflow.com/questions/2675323/mysql-load-null-values-from-csv-data
+                                '\\N'
+                            } else {
+                                column
+                            }
+                        }.join('\t'))
                     }
                 }
                 sql.execute "load data local infile :infile into table ${table}${(columns.size() > 0) ? "(${columns.join(', ')})" : ''}", [infile: infile.absolutePath]

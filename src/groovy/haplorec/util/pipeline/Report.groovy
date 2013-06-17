@@ -51,6 +51,8 @@ public class Report {
             duplicateKey: [
                 // repeat drug recommendation details for different patients
                 drug_recommendation : ['id', [ ( kwargs.phenotypeDrugRecommendation ) : ['job_id', 'patient_id'] ]],
+                // repeat phenotypes for different drug recommendations
+                ( kwargs.genePhenotype ) : ['id', [ drug_recommendation : ['id'] ]],
                 // don't repeat a haplotype for the same patient
                 ( kwargs.geneHaplotype ) : ['job_id', 'patient_id', 'gene_name', 'haplotype_name'],
                 // repeat variants for the same patient but a different haplotype (but we don't 
@@ -102,6 +104,8 @@ public class Report {
             duplicateKey: [
                 // repeat drug recommendation details for different patients
                 drug_recommendation : ['id', [ ( kwargs.genotypeDrugRecommendation ) : ['job_id', 'patient_id'] ]],
+                // repeat genotypes for different drug recommendations
+                ( kwargs.genotype ) : ['id', [ drug_recommendation : ['id'] ]],
                 // don't repeat a haplotype for the same patient
                 ( kwargs.geneHaplotype ) : ['job_id', 'patient_id', 'gene_name', 'haplotype_name'],
                 // repeat variants for the same patient but a different haplotype (but we don't 

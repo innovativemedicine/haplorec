@@ -69,7 +69,9 @@ public class PipelineTest extends DBTest {
     }
 
     def assertJobTable(Map kwargs = [:], jobTable, expectedRows) {
-		assertEquals(expectedRows.sort(), select(sql, jobTable, columnsToCheck[jobTable]).sort())
+        def expect = expectedRows.sort()
+        def got = select(sql, jobTable, columnsToCheck[jobTable]).sort()
+		assert expect == got
     }
 
 	void testDrugRecommendationsAmbiguous() {
@@ -708,6 +710,54 @@ public class PipelineTest extends DBTest {
 
 	}
 
+    void testUnambiguousMultipleHet() {
+
+        /* Test that haplotypes that can be unambiguously determined from hom variants and 1 het 
+         * variant are called, even if there are more than 1 het variants that we could try to use.
+         */
+        def sampleData = [
+            gene_haplotype_variant: [
+                // rs1 A is all we need to call g1 *1
+                ['g1', '*1', 'rs1', 'A'],
+                ['g1', '*1', 'rs2', 'G'],
+                ['g1', '*1', 'rs3', 'T'],
+
+                // rs1 T is all we need to call g1 *2
+                ['g1', '*2', 'rs1', 'T'],
+                ['g1', '*2', 'rs2', 'G'],
+                ['g1', '*2', 'rs3', 'T'],
+            ],
+        ]
+        insertSampleData(sampleData)
+
+        drugRecommendationsTest(
+            variants: [
+                // 2 hets. g1 *1
+                ['patient1', 'chr1A', 'rs1', 'A', 'hom'],
+                ['patient1', 'chr1B', 'rs1', 'A', 'hom'],
+                ['patient1', 'chr1A', 'rs2', 'G', 'het'],
+                ['patient1', 'chr1B', 'rs2', 'G', 'het'],
+                ['patient1', 'chr1A', 'rs3', 'T', 'het'],
+                ['patient1', 'chr1B', 'rs3', 'T', 'het'],
+
+                // 2 hets. g1 *2
+                ['patient2', 'chr1A', 'rs1', 'T', 'hom'],
+                ['patient2', 'chr1B', 'rs1', 'T', 'hom'],
+                ['patient2', 'chr1A', 'rs2', 'G', 'het'],
+                ['patient2', 'chr1B', 'rs2', 'G', 'het'],
+                ['patient2', 'chr1A', 'rs3', 'T', 'het'],
+                ['patient2', 'chr1B', 'rs3', 'T', 'het'],
+            ])
+        assertJobTable('job_patient_gene_haplotype', [
+            [1, 'patient1', 'g1', '*1'],
+			[1, 'patient1', 'g1', '*1'],
+
+            [1, 'patient2', 'g1', '*2'],
+			[1, 'patient2', 'g1', '*2'],
+        ])
+
+    }
+
     /* Load tests.
      */
 
@@ -721,11 +771,6 @@ public class PipelineTest extends DBTest {
                 drugRecommendationsTest(variants: variants)
             }
         }
-    }
-
-    void pipelineStageTest(stage) {
-        Set<Dependency> built = []
-        def job = Pipeline.pipelineJob(built)
     }
 
     void buildDependencies(job, stage, built) {

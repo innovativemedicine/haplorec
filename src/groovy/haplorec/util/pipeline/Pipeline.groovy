@@ -108,26 +108,28 @@ public class Pipeline {
 			select: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2', 'haplotype_name2'],
             saveAs: 'query', 
             sqlParams: kwargs.sqlParams,
-			tableAWhere: { t -> "${t}.job_id = :job_id" },
+            // TODO: ignore heterozygous snp's until we can resolve testUnambiguousMultipleHet
+			tableAWhere: { t -> "${t}.job_id = :job_id and ${t}.zygosity = 'hom'" },
         )
+            // TODO: ignore heterozygous snp's until we can resolve testUnambiguousMultipleHet
+            // |where
+            // |s.gene_name2 not in (
+            // |    select gene_name
+            // |    from job_patient_variant v
+            // |    join gene_haplotype_variant using (snp_id)
+            // |    where 
+            // |    v.zygosity = 'het' and
+            // |    v.job_id = :job_id and
+            // |    v.patient_id = s.patient_id and
+            // |    v.physical_chromosome = s.physical_chromosome and
+            // |    gene_haplotype_variant.haplotype_name = s.haplotype_name2
+            // |    group by gene_name
+            // |    having count(*) > 1
+            // |)
         def query = """\
             |select job_id, patient_id, gene_name2 as gene_name, haplotype_name2 as haplotype_name from (
             |    $setContainsQuery
             |) s 
-            |where
-            |s.gene_name2 not in (
-            |    select gene_name
-            |    from job_patient_variant v
-            |    join gene_haplotype_variant using (snp_id)
-            |    where 
-            |    v.zygosity = 'het' and
-            |    v.job_id = :job_id and
-            |    v.patient_id = s.patient_id and
-            |    v.physical_chromosome = s.physical_chromosome and
-            |    gene_haplotype_variant.haplotype_name = s.haplotype_name2
-            |    group by gene_name
-            |    having count(*) > 1
-            |)
             |group by job_id, patient_id, gene_name2, physical_chromosome
             |having count(*) = 1
         """.stripMargin()

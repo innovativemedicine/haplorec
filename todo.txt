@@ -381,3 +381,7 @@ most other queries are basic joins / more selectWhereSetContains stuff....
 
 ---
 run aaron's PGX file
+
+- bug: some samples had only 1 haplotype identified; possible cause: there is a bug where even if a 
+  haplotype can be called unambiguously with a set of hom variants, there are > 1 het variants that get 
+  used anyways 

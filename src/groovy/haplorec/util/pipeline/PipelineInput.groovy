@@ -78,7 +78,10 @@ public class PipelineInput {
                     } else if (allelesStr.length() == 0) {
                         alleles = ['']
                     } else {
-                        throw new Input.InvalidInputException("Number of alleles was ${allelesStr.length()} for ${snpId} ${allelesStr}; expected 0, 1, or 2".toString())
+                        // TOOD: zygosity could be het (Swan said something about CTTdel being heterozygous)
+                        zygosity = 'hom'
+                        alleles = [allelesStr] * 2
+                        // throw new Input.InvalidInputException("Number of alleles was ${allelesStr.length()} for ${snpId} ${allelesStr}; expected 0, 1, or 2".toString())
                     }
                     int i = 0
                     alleles.each { allele ->

@@ -13,6 +13,8 @@ class Dependency {
 	 */
 	def finished
 	List<Dependency> dependsOn = []
+    List<Closure> beforeBuilt = []
+    List<Closure> afterBuilt = []
 	
 	void build(Set<Dependency> built = new HashSet<Dependency>()) {
 		/* TODO:
@@ -32,7 +34,13 @@ class Dependency {
 			}
 		}
 		built.add(d)
+        d.beforeBuilt.each { handler ->
+            handler(d)
+        }
 		d.rule()
+        d.afterBuilt.each { handler ->
+            handler(d)
+        }
 		// TODO: does any still depend on me and need to be built?  If not, call
 	}
 	

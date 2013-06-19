@@ -188,4 +188,51 @@ class DependencyTest extends GroovyTestCase {
 
     }
 
+    def buildHandlerTest(Closure addHandler) {
+        /* Test that build handlers:
+         * 1. all get called
+         * 2. get called in the order they were added
+         * 3. get called in proper dependency order
+         */
+        def state = []
+        def buildHandler = { i ->
+            { dependency ->
+                state.add(dependency.target + i)
+            }
+        }
+        def builder = new DependencyGraphBuilder()
+		def _ = { -> }
+		def dep = { name -> [id:name, target:name, rule:_] }
+		Dependency A, B, C
+		C = builder.dependency(dep('C')) {
+            B = dependency(dep('B')) {
+                A = dependency(dep('A')) 
+            }
+        }
+        def numHandlers = 2
+        [A, B, C].each { d ->
+            (1..numHandlers).each { i ->
+                addHandler(d, buildHandler(i))
+            }
+        }
+        def expect = [A, B, C].collect { d -> 
+            (1..numHandlers).collect { i -> d.target + i } 
+        }.flatten()
+        C.build()
+        def got = state 
+        assert expect == got
+    }
+
+    void testAfterBuilt() {
+        buildHandlerTest() { d, handler ->
+            d.afterBuilt += handler
+        }
+    }
+
+    void testBeforeBuilt() {
+        buildHandlerTest() { d, handler ->
+            d.beforeBuilt += handler
+        }
+    }
+
 }

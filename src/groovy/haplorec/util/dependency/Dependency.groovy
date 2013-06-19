@@ -13,8 +13,10 @@ class Dependency {
 	 */
 	def finished
 	List<Dependency> dependsOn = []
-    List<Closure> beforeBuilt = []
-    List<Closure> afterBuilt = []
+    List<Closure> beforeBuild = []
+    List<Closure> afterBuild = []
+    List<Closure> onFail = []
+    Boolean propagateFailure = true
 	
 	void build(Set<Dependency> built = new HashSet<Dependency>()) {
 		/* TODO:
@@ -34,11 +36,20 @@ class Dependency {
 			}
 		}
 		built.add(d)
-        d.beforeBuilt.each { handler ->
+        d.beforeBuild.each { handler ->
             handler(d)
         }
-		d.rule()
-        d.afterBuilt.each { handler ->
+        try {
+            d.rule()
+        } catch (Exception e) {
+            d.onFail.each { handler ->
+                handler(d, e)
+            }
+            if (d.propagateFailure) {
+                throw e
+            }
+        }
+        d.afterBuild.each { handler ->
             handler(d)
         }
 		// TODO: does any still depend on me and need to be built?  If not, call

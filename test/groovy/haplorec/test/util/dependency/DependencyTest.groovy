@@ -2,6 +2,7 @@ package haplorec.test.util.dependency
 
 import haplorec.util.dependency.Dependency
 import haplorec.util.dependency.DependencyGraphBuilder
+import groovy.transform.InheritConstructors
 
 class DependencyTest extends GroovyTestCase {
 
@@ -223,16 +224,100 @@ class DependencyTest extends GroovyTestCase {
         assert expect == got
     }
 
-    void testAfterBuilt() {
+    void testAfterBuild() {
         buildHandlerTest() { d, handler ->
-            d.afterBuilt += handler
+            d.afterBuild += handler
         }
     }
 
-    void testBeforeBuilt() {
+    void testBeforeBuild() {
         buildHandlerTest() { d, handler ->
-            d.beforeBuilt += handler
+            d.beforeBuild += handler
         }
+    }
+
+	@InheritConstructors
+	static class OnFailException extends RuntimeException {}
+    /* expectedOnFail: the dependencies whose onFail handlers we expect to get fired.
+     */
+    def onFailTest(Map kwargs = [:], expectedOnFail, expectedBeforeBuild) {
+        /* Test that build handlers:
+         * 1. all get called
+         * 2. get called in the order they were added
+         * 3. get called in proper dependency order
+         */
+        if (kwargs.propagateFailure == null) { kwargs.propagateFailure = true }
+        if (kwargs.fail == null) { kwargs.fail = [] as Set }
+        def onFailState = []
+        def onFailHandler = { i ->
+            { dependency, exception ->
+                onFailState.add(dependency.target + i)
+            }
+        }
+        def beforeBuildState = []
+        def beforeBuildHandler = { i ->
+            { dependency ->
+                beforeBuildState.add(dependency.target + i)
+            }
+        }
+        def builder = new DependencyGraphBuilder()
+        def rule = { target ->
+            { ->
+                if (target in kwargs.fail) {
+                    throw new OnFailException(target)
+                }
+            }
+        }
+		def dep = { name -> [id:name, target:name, rule:rule(name), propagateFailure: kwargs.propagateFailure] }
+		Dependency A, B, C
+		C = builder.dependency(dep('C')) {
+            B = dependency(dep('B')) {
+                A = dependency(dep('A')) 
+            }
+        }
+        def numHandlers = 2
+        [A, B, C].each { d ->
+            (1..numHandlers).each { i ->
+                d.onFail += onFailHandler(i)
+                d.beforeBuild += beforeBuildHandler(i)
+            }
+        }
+        def deps = [A, B, C].inject([:]) { m, d -> m[d.target] = d; m }
+        def expected = { xs ->
+            xs.collect { target -> 
+                (1..numHandlers).collect { i -> target + i } 
+            }.flatten()
+        }
+        if (kwargs.propagateFailure) {
+            shouldFail(OnFailException) {
+                C.build()
+            }
+        } else {
+            C.build()
+        }
+
+        def gotOnFail = onFailState 
+        def expectOnFail = expected(expectedOnFail)
+        assert expectOnFail == gotOnFail
+
+        def gotBeforeBuild = beforeBuildState 
+        def expectBeforeBuild = expected(expectedBeforeBuild)
+        assert expectBeforeBuild == gotBeforeBuild
+    }
+
+    void testOnFailWithPropagation() {
+        onFailTest(['A'], ['A'],
+            propagateFailure: true,
+            fail: ['A'] as Set)
+        onFailTest(['B'], ['A', 'B'],
+            propagateFailure: true,
+            fail: ['B'] as Set)
+        onFailTest(['C'], ['A', 'B', 'C'],
+            propagateFailure: true,
+            fail: ['C'] as Set)
+		onFailTest(['A'], ['A'],
+			propagateFailure: true,
+			fail: ['A', 'B', 'C'] as Set)
     }
 
 }

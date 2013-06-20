@@ -120,14 +120,13 @@ public class DBTest extends GroovyTestCase {
             sql.execute "set ${kw.scope} ${var} = ${oldVar(var)}".toString()
         }
         File logfile
-        File dir
         try {
-            // Hack to create a temporary directory: http://stackoverflow.com/questions/817420/how-can-i-create-a-temporary-folder-in-java
-            dir = File.createTempFile('logdir', '')
-            dir.delete()
-            dir.mkdir()
-            dir.setWritable(true, false)
+            // Assume that the entire path to the home directory is executable by 'other' (sadly, 
+            // this is not the case for temp files, at least on MacOS), and hence accessible by the 
+            // _mysql user.
+            File dir = new File(System.getProperty('user.home'))
             logfile = File.createTempFile('slow_query_log', '.txt', dir)
+            // Make the slow_query_log_file writeable to anyone (to make it writeable by _mysql).
             logfile.setWritable(true, false)
             println "LOGFILE == $logfile"
             setVar('slow_query_log', 1)
@@ -138,6 +137,7 @@ public class DBTest extends GroovyTestCase {
             // TODO: figure out if we need to flush the logs
             sql.execute "FLUSH LOGS"
         } finally {
+            println sql.rows("select @old_slow_query_log, @old_slow_query_log_file, @old_log_queries_not_using_indexes, @old_long_query_time")
             println sql.rows("select @@slow_query_log, @@slow_query_log_file, @@log_queries_not_using_indexes, @@long_query_time")
             // reset any modified mysql system variables and delete the logfile
             resetVar('slow_query_log')
@@ -146,9 +146,6 @@ public class DBTest extends GroovyTestCase {
             resetVar('long_query_time')
             // if (logfile != null) {
             //     logfile.delete()
-            // }
-            // if (dir != null) {
-            //     dir.delete()
             // }
         }
     }

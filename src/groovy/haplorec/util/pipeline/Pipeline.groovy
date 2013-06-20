@@ -88,11 +88,6 @@ public class Pipeline {
         )
     }
 
-    /* TODO: 
-     * - create an iterator wrapper over file to process the input file into the fields we want (ASSAY_ID == snp_id, GENOTYPE_ID == allele x 1/2, SAMPLE_ID = patient_id) 
-     * - call this function with kwargs.variants = iterable over file
-     * - mark heterozygous calls as ignored, and specify the reason why they are ignored
-     */
     static def variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
         // Create the variantGene table.
@@ -108,28 +103,26 @@ public class Pipeline {
 			select: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2', 'haplotype_name2'],
             saveAs: 'query', 
             sqlParams: kwargs.sqlParams,
-            // TODO: ignore heterozygous snp's until we can resolve testUnambiguousMultipleHet
-			tableAWhere: { t -> "${t}.job_id = :job_id and ${t}.zygosity = 'hom'" },
+			tableAWhere: { t -> "${t}.job_id = :job_id" },
         )
-            // TODO: ignore heterozygous snp's until we can resolve testUnambiguousMultipleHet
-            // |where
-            // |s.gene_name2 not in (
-            // |    select gene_name
-            // |    from job_patient_variant v
-            // |    join gene_haplotype_variant using (snp_id)
-            // |    where 
-            // |    v.zygosity = 'het' and
-            // |    v.job_id = :job_id and
-            // |    v.patient_id = s.patient_id and
-            // |    v.physical_chromosome = s.physical_chromosome and
-            // |    gene_haplotype_variant.haplotype_name = s.haplotype_name2
-            // |    group by gene_name
-            // |    having count(*) > 1
-            // |)
         def query = """\
             |select job_id, patient_id, gene_name2 as gene_name, haplotype_name2 as haplotype_name from (
             |    $setContainsQuery
             |) s 
+            |where
+            |s.gene_name2 not in (
+            |    select gene_name
+            |    from job_patient_variant v
+            |    join gene_haplotype_variant using (snp_id)
+            |    where 
+            |    v.zygosity = 'het' and
+            |    v.job_id = :job_id and
+            |    v.patient_id = s.patient_id and
+            |    v.physical_chromosome = s.physical_chromosome and
+            |    gene_haplotype_variant.haplotype_name = s.haplotype_name2
+            |    group by gene_name
+            |    having count(*) > 1
+            |)
             |group by job_id, patient_id, gene_name2, physical_chromosome
             |having count(*) = 1
         """.stripMargin()

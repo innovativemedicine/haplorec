@@ -385,3 +385,5 @@ run aaron's PGX file
 - bug: some samples had only 1 haplotype identified; possible cause: there is a bug where even if a 
   haplotype can be called unambiguously with a set of hom variants, there are > 1 het variants that get 
   used anyways 
+  - but regardless of hom variants, if there are multiple het variants, we can't unambiguously say what 
+    haplotype we have (it is an error to only consider 1 het variant)

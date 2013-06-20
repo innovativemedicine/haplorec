@@ -750,7 +750,7 @@ public class PipelineTest extends DBTest {
    //     def samples = 379 // genes 
    //     // actual is 22
    //     def variantsPerSample = variantsPerHaplotype // variants / samples
-   //     def job = Pipeline.pipelineJob(sql, variants: generateVariants(variantsPerSample, samples))
+   //     def (jobId, job) = Pipeline.pipelineJob(sql, variants: generateVariants(variantsPerSample, samples))
    //     Set<Dependency> built = []
    //     buildDependencies(job, 'geneHaplotype', built)
    //     

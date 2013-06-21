@@ -39,11 +39,12 @@ public class PipelineTest extends DBTest {
 
         columnsToCheck = [
             job_patient_phenotype_drug_recommendation : ['job_id', 'patient_id', 'drug_recommendation_id'],
-            job_patient_genotype_drug_recommendation : ['job_id', 'patient_id', 'drug_recommendation_id'],
-            job_patient_gene_haplotype      : ['job_id', 'patient_id', 'gene_name', 'haplotype_name'],
-            job_patient_genotype            : ['job_id', 'patient_id', 'gene_name', 'haplotype_name1', 'haplotype_name2'],
-            job_patient_gene_phenotype      : ['job_id', 'patient_id', 'gene_name', 'phenotype_name'],
-			job_patient_variant             : ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'zygosity'],
+            job_patient_genotype_drug_recommendation  : ['job_id', 'patient_id', 'drug_recommendation_id'],
+            job_patient_gene_haplotype                : ['job_id', 'patient_id', 'gene_name', 'haplotype_name'],
+            job_patient_genotype                      : ['job_id', 'patient_id', 'gene_name', 'haplotype_name1', 'haplotype_name2'],
+            job_patient_gene_phenotype                : ['job_id', 'patient_id', 'gene_name', 'phenotype_name'],
+            job_patient_variant                       : ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'zygosity'],
+            job_patient_unique_haplotype              : ['job_id', 'patient_id', 'gene_name', 'physical_chromosome'],
         ]
     }
 
@@ -710,105 +711,150 @@ public class PipelineTest extends DBTest {
 
 	}
 
-    /* Load tests.
-     */
-
-    void testLoadLotsOfVariants() {
-        /* Test loading of variant data in job_patient_variant / _job_patient_variant_gene.
+    void testUniqueHaplotypeExistingVariants() {
+        /* Test for a unique haplotype consisting of existing variants (from already known 
+         * haplotypes).
          */
-        // number of job_patient_variant records == 2 physical_chromosome * 10 samples * 5000 variantsPerSample
-        def variants = generateVariants(5000, 10)
-        withSlowQueryLog(sql) {
-            shouldRunWithin(seconds: 10) {
-                drugRecommendationsTest(variants: variants)
-            }
-        }
+        def sampleData = [
+            gene_haplotype_variant: [
+                ['g1', '*1', 'rs1', 'A'],
+                ['g1', '*1', 'rs2', 'G'],
+                ['g1', '*1', 'rs3', 'C'],
+                ['g1', '*2', 'rs1', 'T'],
+                ['g1', '*2', 'rs2', 'C'],
+                ['g1', '*2', 'rs3', 'C'],
+            ],
+        ]
+        insertSampleData(sampleData)
+
+		drugRecommendationsTest(
+			variants: [
+                ['patient1', 'chr1A', 'rs1', 'T', 'hom'],
+                ['patient1', 'chr1B', 'rs1', 'T', 'hom'],
+                ['patient1', 'chr1A', 'rs2', 'G', 'hom'],
+                ['patient1', 'chr1B', 'rs2', 'G', 'hom'],
+                ['patient1', 'chr1A', 'rs3', 'C', 'hom'],
+                ['patient1', 'chr1B', 'rs3', 'C', 'hom'],
+            ])
+        assertJobTable('job_patient_gene_haplotype', [])
+        assertJobTable('job_patient_unique_haplotype', [
+            [1, 'patient1', 'g1', 'chr1A'],
+            [1, 'patient1', 'g1', 'chr1B'],
+        ])
     }
+	
+	void testUniqueHaplotypeNovelVariant() {
+		/* Test for a unique haplotype consisting of a novel variant (does not exist in any known
+		 * haplotypes).
+		 */
+		def sampleData = [
+			gene_haplotype_variant: [
+				['g1', '*1', 'rs1', 'A'],
+				['g1', '*1', 'rs2', 'G'],
+				['g1', '*1', 'rs3', 'C'],
+				['g1', '*2', 'rs1', 'T'],
+				['g1', '*2', 'rs2', 'C'],
+				['g1', '*2', 'rs3', 'C'],
+			],
+		]
+		insertSampleData(sampleData)
 
-    void buildDependencies(job, stage, built) {
-        job[stage].dependsOn.each { d ->
-            d.build(built)
-        }
-    }
+		drugRecommendationsTest(
+			variants: [
+				['patient1', 'chr1A', 'rs1', 'T', 'hom'],
+				['patient1', 'chr1B', 'rs1', 'T', 'hom'],
+				['patient1', 'chr1A', 'rs2', 'C', 'hom'],
+				['patient1', 'chr1B', 'rs2', 'C', 'hom'],
+				['patient1', 'chr1A', 'rs3', 'T', 'hom'],
+				['patient1', 'chr1B', 'rs3', 'T', 'hom'],
+			])
+		assertJobTable('job_patient_gene_haplotype', [])
+		assertJobTable('job_patient_unique_haplotype', [
+			[1, 'patient1', 'g1', 'chr1A'],
+			[1, 'patient1', 'g1', 'chr1B'],
+		])
+	}
+	
+	void testUniqueHaplotypeNovelVariantIncomplete() {
+		/* Test for a unique haplotype consisting of a novel variant (does not exist in any known
+		 * haplotypes), that is lacking variants for all snps in a gene.
+		 */
+		def sampleData = [
+			gene_haplotype_variant: [
+				['g1', '*1', 'rs1', 'A'],
+				['g1', '*1', 'rs2', 'G'],
+				['g1', '*1', 'rs3', 'C'],
+				['g1', '*2', 'rs1', 'T'],
+				['g1', '*2', 'rs2', 'C'],
+				['g1', '*2', 'rs3', 'C'],
+			],
+		]
+		insertSampleData(sampleData)
 
-   // void testGeneHaplotype() {
-   //     /* Test the variantToGeneHaplotype stage of the pipeline.
-   //      */
-   //     def variantsPerHaplotype = 151
-   //     def haplotypesPerGene = 132
-   //     // actual is 10
-   //     def genes = 100
-   //     // number of gene_haplotype_variant records
-   //     def variants = variantsPerHaplotype * haplotypesPerGene * genes
-   //     def sampleData = [
-   //         gene_haplotype_variant: generateGeneHaplotypeVariant(variantsPerHaplotype, haplotypesPerGene, genes),
-   //     ]
-   //     insertSampleData(sampleData)
+		drugRecommendationsTest(
+			variants: [
+				['patient1', 'chr1A', 'rs1', 'G', 'hom'],
+				['patient1', 'chr1B', 'rs1', 'G', 'hom'],
+			])
+		assertJobTable('job_patient_gene_haplotype', [])
+		assertJobTable('job_patient_unique_haplotype', [
+			[1, 'patient1', 'g1', 'chr1A'],
+			[1, 'patient1', 'g1', 'chr1B'],
+		])
+	}
+	
+	void testUniqueHaplotypeExistingVariantsIncomplete() {
+		/* Test for a unique haplotype consisting of existing variants (from already known 
+         * haplotypes), that is lacking variants for all snps in a gene.
+		 */
+		def sampleData = [
+			gene_haplotype_variant: [
+				['g1', '*1', 'rs1', 'A'],
+				['g1', '*1', 'rs2', 'G'],
+				['g1', '*1', 'rs3', 'C'],
+				['g1', '*2', 'rs1', 'T'],
+				['g1', '*2', 'rs2', 'C'],
+				['g1', '*2', 'rs3', 'C'],
+			],
+		]
+		insertSampleData(sampleData)
 
-   //     // actual is 379
-   //     // only the first 100 (genes) will have haplotypes
-   //     def samples = 379 // genes 
-   //     // actual is 22
-   //     def variantsPerSample = variantsPerHaplotype // variants / samples
-   //     def job = Pipeline.pipelineJob(sql, variants: generateVariants(variantsPerSample, samples))
-   //     Set<Dependency> built = []
-   //     buildDependencies(job, 'geneHaplotype', built)
-   //     
-   //     withSlowQueryLog(sql) {
-   //         shouldRunWithin(minutes: 5) {
-   //             job.geneHaplotype.build(built)
-   //         }
-   //     }
-   // }
+		drugRecommendationsTest(
+			variants: [
+                ['patient1', 'chr1A', 'rs1', 'T', 'hom'],
+                ['patient1', 'chr1B', 'rs1', 'T', 'hom'],
+                ['patient1', 'chr1A', 'rs2', 'G', 'hom'],
+                ['patient1', 'chr1B', 'rs2', 'G', 'hom'],
+			])
+		assertJobTable('job_patient_gene_haplotype', [])
+		assertJobTable('job_patient_unique_haplotype', [
+			[1, 'patient1', 'g1', 'chr1A'],
+			[1, 'patient1', 'g1', 'chr1B'],
+		])
+	}
+	
+	void testNoUniqueHaplotypeAmbiguousExisting() {
+		/* Test for the absence of any unique haplotypes, since the variants observed are an ambiguous subset of existing haplotypes.
+		 */
+		def sampleData = [
+			gene_haplotype_variant: [
+				['g1', '*1', 'rs1', 'A'],
+				['g1', '*1', 'rs2', 'G'],
+				['g1', '*1', 'rs3', 'C'],
+				['g1', '*2', 'rs1', 'T'],
+				['g1', '*2', 'rs2', 'C'],
+				['g1', '*2', 'rs3', 'C'],
+			],
+		]
+		insertSampleData(sampleData)
 
-   def generateGeneHaplotypeVariant(variantsPerHaplotype, haplotypesPerGene, genes) {
-       def haplotypes = haplotypesPerGene * genes
-       def variants = variantsPerHaplotype * haplotypes
-       def rs = 1
-       return new Object() {
-           def each(Closure f) {
-               (1..genes).each { gene ->
-                   (1..haplotypesPerGene).each { haplotype ->
-                       (1..variantsPerHaplotype).each { variant ->
-                           String allele
-                           if (variant == 1) {
-                               // hack to distinguish haplotype snps; the first snp allele is always the haplotype#
-                               allele = haplotype
-                           } else {
-                               allele = 'A'
-                           }
-                           f(["g$gene", "*$haplotype", "rs${rs + variant - 1}", allele].collect { it.toString() })
-                       }
-                   }
-                   rs += variantsPerHaplotype
-               }
-           }
-       }
-   }
-
-   def generateVariants(variantsPerSample, samples) {
-       def variants = variantsPerSample * samples
-       def rs = 1
-       String zygosity = "hom"
-       return new Object() {
-           def each(Closure f) {
-               (1..samples).each { sample ->
-                   (1..variantsPerSample).each { variant ->
-                       String allele
-                       if (variant == 1) {
-                           // hack to distinguish haplotype snps; the first snp allele is always the sample#
-                           allele = 1
-                       } else {
-                           allele = 'A'
-                       }
-                       ['A', 'B'].each { physical_chromosome ->
-                           f(["sample$sample", physical_chromosome, "rs$rs", allele, zygosity].collect { it.toString() })
-                       }
-                       rs += 1
-                   }
-               }
-           }
-       }
-   }
+		drugRecommendationsTest(
+			variants: [
+				['patient1', 'chr1A', 'rs3', 'C', 'hom'],
+				['patient1', 'chr1B', 'rs3', 'C', 'hom'],
+			])
+		assertJobTable('job_patient_gene_haplotype', [])
+		assertJobTable('job_patient_unique_haplotype', [])
+	}
 
 }

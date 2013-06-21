@@ -387,3 +387,5 @@ run aaron's PGX file
   used anyways 
   - but regardless of hom variants, if there are multiple het variants, we can't unambiguously say what 
     haplotype we have (it is an error to only consider 1 het variant)
+
+- add a job_patient_novel_haplotype table that records novel haplotype's, and populate it during variantToGeneHaplotype

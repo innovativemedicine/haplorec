@@ -81,6 +81,22 @@ CREATE TABLE gene_haplotype_variant (
     primary key (gene_name, haplotype_name, snp_id, allele)
 ) {{SQL_ENGINE}};
 
+-- gene_haplotype_variant is denormalized in terms of the snp's associated with a gene 
+-- (they are the same for each haplotype of that gene).
+CREATE ALGORITHM=MERGE VIEW gene_snp ( 
+    gene_name,
+    snp_id
+) as 
+select distinct gene_name, snp_id
+from gene_haplotype_variant;
+
+CREATE ALGORITHM=MERGE VIEW gene_haplotype ( 
+    gene_name,
+    haplotype_name 
+) as 
+select distinct gene_name, haplotype_name
+from gene_haplotype_variant;
+
 -- Defines the mapping (GeneName, HaplotypeName, HaplotypeName) -> (GeneName, PhenotypeName).
 -- That is, a mapping from genotypes (defined as 2 haplotypes that span the same genetic region of a 
 -- gene) to phenotypes. 
@@ -182,6 +198,7 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
 {%- endcall %}
 
 {% call job_patient_table('gene_haplotype') -%}
+    physical_chromosome varchar({{SQL_PHYSICAL_CHROMOSOME_LENGTH}}),
     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
     haplotype_name varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
     index gene_name_haplotype_name_idx (gene_name, haplotype_name),
@@ -212,7 +229,7 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
     index job_pat_phys_zyg (job_id, patient_id, physical_chromosome, zygosity),
 {%- endcall %}
 
-{% call job_patient_table('variant_gene', table_prefix='_') -%}
+{% call job_patient_table('variant_gene_haplotype', table_prefix='_') -%}
     physical_chromosome varchar({{SQL_PHYSICAL_CHROMOSOME_LENGTH}}),
     snp_id varchar({{SQL_SNP_ID_LENGTH}}),
     allele varchar({{SQL_ALLELE_LENGTH}}),
@@ -225,7 +242,7 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
 
 -- add non-set gene_name2/haplotype_name2 so we can group by it and select it in variantToGeneHaplotype
 -- (selectWhereSetContains uses "join using (A/B group fields)" which leads to ambiguity otherwise).
-create algorithm=merge view _job_patient_variant_gene_view ( 
+create algorithm=merge view _job_patient_variant_gene_haplotype_view ( 
     job_id,
     patient_id,
     physical_chromosome,
@@ -238,4 +255,34 @@ create algorithm=merge view _job_patient_variant_gene_view (
     zygosity 
 ) as 
 select job_id, patient_id, physical_chromosome, snp_id, allele, gene_name, haplotype_name, gene_name, haplotype_name, zygosity
+from _job_patient_variant_gene_haplotype;
+
+{% call job_patient_table('variant_gene', table_prefix='_') -%}
+    physical_chromosome varchar({{SQL_PHYSICAL_CHROMOSOME_LENGTH}}),
+    snp_id varchar({{SQL_SNP_ID_LENGTH}}),
+    allele varchar({{SQL_ALLELE_LENGTH}}),
+    gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
+    zygosity char(3), 
+    index gene_name_snp_id_allele_idx (gene_name, snp_id, allele),
+    index job_pat_phys_gene_idx (job_id, patient_id, physical_chromosome, gene_name),
+{%- endcall %}
+
+create algorithm=merge view _job_patient_variant_gene_view ( 
+    job_id,
+    patient_id,
+    physical_chromosome,
+    snp_id,
+    allele,
+    gene_name,
+    gene_name2,
+    zygosity 
+) as 
+select job_id, patient_id, physical_chromosome, snp_id, allele, gene_name, gene_name, zygosity
 from _job_patient_variant_gene;
+
+
+-- GeneName, { (SnpId, Allele) }
+{% call job_patient_table('unique_haplotype') -%}
+    physical_chromosome varchar({{SQL_PHYSICAL_CHROMOSOME_LENGTH}}),
+    gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
+{%- endcall %}

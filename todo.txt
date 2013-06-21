@@ -389,3 +389,7 @@ run aaron's PGX file
     haplotype we have (it is an error to only consider 1 het variant)
 
 - add a job_patient_novel_haplotype table that records novel haplotype's, and populate it during variantToGeneHaplotype
+
+- bug: figure out why some unique haplotypes have a null physical chromosome
+  - it's because we record some variants that have '' as the allele as having a null physical 
+    chromsome

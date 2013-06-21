@@ -857,4 +857,30 @@ public class PipelineTest extends DBTest {
 		assertJobTable('job_patient_unique_haplotype', [])
 	}
 
+	void testNoUniqueHaplotypeNullPhysicalChromosome() {
+        /* Test for the absence of any unique haplotypes when the input variants have a snp for a 
+         * gene, but with physical chromsome, allele, and zygosity null (this is how variants with 
+         * '' for allele are stored in job_patient_variant).
+         */
+		def sampleData = [
+			gene_haplotype_variant: [
+				['g1', '*1', 'rs1', 'A'],
+				['g1', '*1', 'rs2', 'G'],
+				['g1', '*1', 'rs3', 'C'],
+				['g1', '*2', 'rs1', 'T'],
+				['g1', '*2', 'rs2', 'C'],
+				['g1', '*2', 'rs3', 'C'],
+			],
+		]
+		insertSampleData(sampleData)
+
+		drugRecommendationsTest(
+			variants: [
+				['patient1', null, 'rs1', null, null],
+				['patient1', null, 'rs1', null, null],
+			])
+		assertJobTable('job_patient_gene_haplotype', [])
+		assertJobTable('job_patient_unique_haplotype', [])
+    }
+
 }

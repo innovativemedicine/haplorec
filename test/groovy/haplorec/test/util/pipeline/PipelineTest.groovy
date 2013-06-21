@@ -857,7 +857,7 @@ public class PipelineTest extends DBTest {
 		assertJobTable('job_patient_unique_haplotype', [])
 	}
 
-	void testNoUniqueHaplotypeNullPhysicalChromosome() {
+	void testNoUniqueHaplotypeEmptyAllele() {
         /* Test for the absence of any unique haplotypes when the input variants have a snp for a 
          * gene, but with physical chromsome, allele, and zygosity null (this is how variants with 
          * '' for allele are stored in job_patient_variant).

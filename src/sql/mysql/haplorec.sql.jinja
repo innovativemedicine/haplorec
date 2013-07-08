@@ -155,6 +155,7 @@ CREATE TABLE genotype_drug_recommendation (
 CREATE TABLE job (
     id bigint not null auto_increment,
     job_name varchar({{SQL_JOB_NAME_LENGTH}}),
+    unique (job_name),
     primary key (id)
 ) {{SQL_ENGINE}};
 

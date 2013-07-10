@@ -286,4 +286,5 @@ from _job_patient_variant_gene;
 {% call job_patient_table('unique_haplotype') -%}
     physical_chromosome varchar({{SQL_PHYSICAL_CHROMOSOME_LENGTH}}),
     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
+    index job_pat_phys_idx (job_id, patient_id, physical_chromosome),
 {%- endcall %}

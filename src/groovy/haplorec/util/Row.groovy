@@ -48,6 +48,33 @@ class Row {
         }
     }
 
+    static def groupBy(iter, groups) {
+        return new Object() {
+            def each(Closure f) {
+                def currentGroup = null
+                def group = []
+                iter.each { map ->
+                    if (currentGroup == null) {
+                        currentGroup = groups.collect { map[it] }
+                        group = [map]
+                    } else {
+                        def nextGroup = groups.collect { map[it] }
+                        if (currentGroup == nextGroup) {
+                            group.add(map)
+                        } else {
+                            f(group)
+                            currentGroup = nextGroup
+                            group = [map]
+                        }
+                    }
+                }
+                if (group != []) {
+                    f(group)
+                }
+            }
+        }
+    }
+
     /* Return an iterator that collapses consecutive rows into a single row.  Collapsing of two rows 
      * defaults to occuring only when the two rows have no columns in common.  Note that collapsing 
      * is an accumulative operation and not a pairwise operation; that is:

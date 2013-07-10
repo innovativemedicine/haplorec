@@ -5,6 +5,68 @@ import haplorec.util.Row
 
 public class Report {
 
+    static class GeneHaplotypeMatrix {
+
+        static class Haplotype {
+            String haplotypeName
+        }
+
+        static class NovelHaplotype {
+            String patientId
+            String physicalChromosome
+        }
+
+        // The gene_name that this haplotype matrix is for.
+        def geneName
+        // A list of snp_id's, representing the snps for this gene.
+        List snpIds
+        // An iterable over rows of snp_id, patient_id, physical_chromosome, 
+        // ordered by those fields.
+        def patientVariants
+
+        def each(Closure f) {
+            /* Iterate over rows of the gene-haplotype matrix, like this:
+             *
+             * Haplotype                      | rs1050828 | rs1050829 | rs5030868 | rs137852328 | rs76723693 | rs2230037
+             * B (wildtype)                   | C         | T         | G         | C           | A          | G
+             * A-202A_376G                    | T         | C         | G         | C           | A          | G
+             * A- 680T_376G                   | C         | C         | G         | A           | A          | G
+             * A-968C_376G                    | C         | C         | G         | C           | G          | G
+             * Mediterranean Haplotype        | C         | T         | A         | C           | A          | A
+             * Sample NA22302-1, Chromosome A | T         | T         | G         |             |            | 
+             * Sample NA22302-1, Chromosome B | T         | T         | A         |             |            | 
+             * Sample NA22302-2, Chromosome A | T         | T         | G         |             |            | 
+             * Sample NA22302-2, Chromosome B | T         | T         | G         |             |            | 
+             *
+             * The "Haplotype ..." header is just for readibility, it isn't actually a row that 
+             * we iterate over.
+             *
+             * Blank allele cells are represented as null's.
+             *
+             * f is a function that accepts 2 arguments:
+             * 1) an instance of Haplotype or NovelHaplotype
+             * 2) an iterable of alleles for the snpIds of this gene
+             *
+             */ 
+            int i = 0
+            alleles = snpIds.collect { snpId ->
+                patientVariants.each { row ->
+                }
+            }
+
+            f(
+                new NovelHaplotype(
+                    patientId: row.patient_id, 
+                    physicalChromosome: physical_chromosome
+                ),
+                alleles
+            )
+
+
+        }
+
+    }
+
     static def phenotypeDrugRecommendationReport(Map kwargs = [:], groovy.sql.Sql sql) {
         kwargs += Pipeline.tables(kwargs)
         report(sql,

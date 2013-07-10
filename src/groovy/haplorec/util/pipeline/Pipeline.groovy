@@ -450,13 +450,14 @@ public class Pipeline {
             }
         }
 
-        return dependencies
+        return [kwargs.jobId, dependencies]
     }
 	
 	static def drugRecommendations(Map kwargs = [:], groovy.sql.Sql sql) {
-        def job = pipelineJob(kwargs, sql)
+        def (jobId, job) = pipelineJob(kwargs, sql)
         // For datasets that are already provided, insert their rows into the approriate job_* table, and mark them as built
         buildAll(job)
+        return jobId
 	}
 
     static def buildAll(job) {

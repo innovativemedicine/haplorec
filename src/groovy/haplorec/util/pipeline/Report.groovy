@@ -1,28 +1,35 @@
 package haplorec.util.pipeline
 
+import groovy.transform.EqualsAndHashCode
+import groovy.transform.ToString
+
 import haplorec.util.Row
 // import haplorec.util.sql.Report (we use this, but we can't import it due to conflicting names)
 
 public class Report {
 
-    static class GeneHaplotypeMatrix {
-
-        static class Haplotype {
-            String haplotypeName
-        }
-
-        static class NovelHaplotype {
-            String patientId
-            String physicalChromosome
-        }
+    public static class GeneHaplotypeMatrix {
 
         // The gene_name that this haplotype matrix is for.
         def geneName
         // A list of snp_id's, representing the snps for this gene.
         List snpIds
-        // An iterable over rows of snp_id, patient_id, physical_chromosome, 
+        // An iterable over rows of snp_id, allele, patient_id, physical_chromosome,
         // ordered by those fields.
         def patientVariants
+
+        @EqualsAndHashCode
+        @ToString
+        static class Haplotype {
+            String haplotypeName
+        }
+
+        @EqualsAndHashCode
+        @ToString
+        static class NovelHaplotype {
+            String patientId
+            String physicalChromosome
+        }
 
         def each(Closure f) {
             /* Iterate over rows of the gene-haplotype matrix, like this:
@@ -48,20 +55,21 @@ public class Report {
              * 2) an iterable of alleles for the snpIds of this gene
              *
              */ 
-            int i = 0
-            alleles = snpIds.collect { snpId ->
-                patientVariants.each { row ->
+            Row.groupBy(patientVariants, ['patient_id', 'physical_chromosome']).each { variants ->
+                def patientId = variants[0].patient_id
+                def snpIdToAllele = variants.inject([:]) { m, variant ->
+                    m[variant.snp_id] = variant.allele
+                    m
                 }
+                def alleles = snpIds.collect { it in snpIdToAllele ? snpIdToAllele[it] : null }
+                f(
+                    new NovelHaplotype(
+                        patientId: variants[0].patient_id,
+                        physicalChromosome: variants[0].physical_chromosome,
+                    ),
+                    alleles,
+                )
             }
-
-            f(
-                new NovelHaplotype(
-                    patientId: row.patient_id, 
-                    physicalChromosome: physical_chromosome
-                ),
-                alleles
-            )
-
 
         }
 

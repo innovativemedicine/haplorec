@@ -2,6 +2,10 @@ package haplorec.util.pipeline
 
 import groovy.transform.EqualsAndHashCode
 import groovy.transform.ToString
+import groovy.sql.GroovyRowResult
+import java.sql.ResultSet
+import java.sql.SQLException
+import java.sql.ResultSetMetaData
 
 import haplorec.util.Row
 // import haplorec.util.sql.Report (we use this, but we can't import it due to conflicting names)
@@ -17,6 +21,13 @@ public class Report {
         // An iterable over rows of snp_id, allele, patient_id, physical_chromosome,
         // ordered by those fields.
         def patientVariants
+        // An iterable over rows of haplotype_name, snp_id, allele
+        // ordered by those fields.
+        def haplotypeVariants
+
+        String toString() {
+            "GeneHaplotypeMatrix(${[geneName, snpIds, iterAsList(patientVariants), iterAsList(haplotypeVariants)].join(', ')})"
+        }
 
         @EqualsAndHashCode
         @ToString
@@ -55,24 +66,97 @@ public class Report {
              * 2) an iterable of alleles for the snpIds of this gene
              *
              */ 
-            Row.groupBy(patientVariants, ['patient_id', 'physical_chromosome']).each { variants ->
-                def patientId = variants[0].patient_id
+
+            def alleles = { variants ->
                 def snpIdToAllele = variants.inject([:]) { m, variant ->
                     m[variant.snp_id] = variant.allele
                     m
                 }
-                def alleles = snpIds.collect { it in snpIdToAllele ? snpIdToAllele[it] : null }
+                return snpIds.collect { it in snpIdToAllele ? snpIdToAllele[it] : null }
+            }
+            Row.groupBy(haplotypeVariants, ['haplotype_name']).each { variants ->
+                f(new Haplotype(haplotypeName: variants[0].haplotype_name), alleles(variants))
+            }
+            Row.groupBy(patientVariants, ['patient_id', 'physical_chromosome']).each { variants ->
+                def patientId = variants[0].patient_id
                 f(
                     new NovelHaplotype(
                         patientId: variants[0].patient_id,
                         physicalChromosome: variants[0].physical_chromosome,
                     ),
-                    alleles,
+                    alleles(variants),
                 )
             }
 
         }
 
+    }
+
+    private static GroovyRowResult nextRow(ResultSet rs) throws SQLException {
+        ResultSetMetaData md = rs.getMetaData();
+        int columns = md.getColumnCount();
+        ArrayList list = new ArrayList(50);
+        if (rs.next()) {
+            HashMap row = new HashMap(columns);
+            for(int i = 1; i <= columns; i++){           
+                row.put(md.getColumnName(i), rs.getObject(i));
+            }
+            return new GroovyRowResult(row);
+        }
+        return null;
+    }
+
+    private static def stmtIter(groovy.sql.Sql sql, String sqlStr) {
+        def stmt = sql.connection.prepareStatement(sqlStr)
+        ResultSet rs = null
+        return new Object() {
+            def execute(Object... params) {
+                (1..params.size()).each { i ->
+                    stmt.setObject(i, params[i-1])
+                }
+                rs = stmt.executeQuery()
+            }
+            def each(Closure f) {
+                if (rs == null) {
+                    throw new IllegalStateException("Must call execute(params) before next()")
+                }
+                while (rs.next()) {
+                    def row = nextRow(rs)
+                    f(row)
+                }
+                rs.close()
+            }
+        }
+    }
+
+    /* Given a job_id, return an iterator over GeneHaplotypeMatrix's, 1 for each distinct gene identified in 
+     * uniqueHaplotype (for this job).
+     */
+    static def novelHaplotypeReport(Map kwargs = [:], groovy.sql.Sql sql) {
+        kwargs += Pipeline.tables(kwargs)
+        return new Object() {
+            def each(Closure f) {
+                def patientVariantsStmt = stmtIter(sql, """\
+                        |select snp_id, allele, patient_id, physical_chromosome
+                        |from ${kwargs.uniqueHaplotype}
+                        |join ${kwargs.variant} using (job_id, patient_id, physical_chromosome)
+                        |where job_id = ? and gene_name = ?
+                        |order by job_id, gene_name, snp_id, patient_id, physical_chromosome
+                        |""".stripMargin())
+                def haplotypeVariantsStmt = stmtIter(sql, """
+                        |select haplotype_name, snp_id, allele
+                        |from gene_haplotype_variant
+                        |where gene_name = ?
+                        |order by gene_name, haplotype_name, snp_id
+                        |""".stripMargin())
+                sql.eachRow("select distinct gene_name from ${kwargs.uniqueHaplotype} where job_id = :job_id".toString(), kwargs.sqlParams) { row ->
+                    def snpIds = sql.rows("select snp_id from gene_snp where gene_name = :gene_name order by snp_id", row).collect { it.snp_id }
+                    patientVariantsStmt.execute(kwargs.sqlParams.job_id, row.gene_name)
+                    haplotypeVariantsStmt.execute(row.gene_name)
+                    f(new GeneHaplotypeMatrix(geneName: row.gene_name, snpIds: snpIds, patientVariants: patientVariantsStmt, haplotypeVariants: haplotypeVariantsStmt))
+                }
+            }
+        }
     }
 
     static def phenotypeDrugRecommendationReport(Map kwargs = [:], groovy.sql.Sql sql) {
@@ -209,6 +293,12 @@ public class Report {
                 aliases.get(k, k)
             },
         )
+    }
+
+    private static def iterAsList(iter) {
+        def xs = []
+        iter.each { xs.add(it) }
+        return xs
     }
 
 }

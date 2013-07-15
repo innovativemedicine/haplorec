@@ -13,7 +13,7 @@ import haplorec.util.Row
 public class Report {
 
     /* Given a job_id, return an iterator over GeneHaplotypeMatrix's, 1 for each distinct gene identified in 
-     * uniqueHaplotype (for this job).
+     * novelHaplotype (for this job).
      */
     static def novelHaplotypeReport(Map kwargs = [:], groovy.sql.Sql sql) {
         kwargs += Pipeline.tables(kwargs)
@@ -22,7 +22,7 @@ public class Report {
 				withConnection(sql) { connection ->
 	                def patientVariantsStmt = stmtIter(connection, """\
 	                        |select snp_id, allele, patient_id, physical_chromosome
-	                        |from ${kwargs.uniqueHaplotype}
+	                        |from ${kwargs.novelHaplotype}
 	                        |join ${kwargs.variant} using (job_id, patient_id, physical_chromosome)
 	                        |where job_id = ? and gene_name = ?
 	                        |order by job_id, gene_name, patient_id, physical_chromosome, snp_id
@@ -33,7 +33,7 @@ public class Report {
 	                        |where gene_name = ?
 	                        |order by gene_name, haplotype_name, snp_id
 	                        |""".stripMargin())
-	                sql.eachRow("select distinct gene_name from ${kwargs.uniqueHaplotype} where job_id = :job_id order by gene_name".toString(), kwargs.sqlParams) { row ->
+	                sql.eachRow("select distinct gene_name from ${kwargs.novelHaplotype} where job_id = :job_id order by gene_name".toString(), kwargs.sqlParams) { row ->
 	                    def snpIds = sql.rows("select snp_id from gene_snp where gene_name = :gene_name order by snp_id", row).collect { it.snp_id }
 	                    patientVariantsStmt.execute(kwargs.sqlParams.job_id, row.gene_name)
 	                    haplotypeVariantsStmt.execute(row.gene_name)

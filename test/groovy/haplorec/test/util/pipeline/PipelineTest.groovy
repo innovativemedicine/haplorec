@@ -44,7 +44,7 @@ public class PipelineTest extends DBTest {
             job_patient_genotype                      : ['job_id', 'patient_id', 'gene_name', 'haplotype_name1', 'haplotype_name2'],
             job_patient_gene_phenotype                : ['job_id', 'patient_id', 'gene_name', 'phenotype_name'],
             job_patient_variant                       : ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'zygosity'],
-            job_patient_unique_haplotype              : ['job_id', 'patient_id', 'gene_name', 'physical_chromosome'],
+            job_patient_novel_haplotype              : ['job_id', 'patient_id', 'gene_name', 'physical_chromosome'],
         ]
     }
 
@@ -523,9 +523,9 @@ public class PipelineTest extends DBTest {
 
 	}
 
-    void testUniqueHaplotypes() {
+    void testNovelHaplotypes() {
         /* Test that haplotypes where we have a strict subset of snp_id's, but some unqiue alleles are ignored.
-         * TODO: ideally we should report unique haplotypes, probably by adding a new node in the graph.
+         * TODO: ideally we should report novel haplotypes, probably by adding a new node in the graph.
          */
         def sampleData = [
             gene_haplotype_variant: [
@@ -711,8 +711,8 @@ public class PipelineTest extends DBTest {
 
 	}
 
-    void testUniqueHaplotypeExistingVariants() {
-        /* Test for a unique haplotype consisting of existing variants (from already known 
+    void testNovelHaplotypeExistingVariants() {
+        /* Test for a novel haplotype consisting of existing variants (from already known 
          * haplotypes).
          */
         def sampleData = [
@@ -737,14 +737,14 @@ public class PipelineTest extends DBTest {
                 ['patient1', 'chr1B', 'rs3', 'C', 'hom'],
             ])
         assertJobTable('job_patient_gene_haplotype', [])
-        assertJobTable('job_patient_unique_haplotype', [
+        assertJobTable('job_patient_novel_haplotype', [
             [1, 'patient1', 'g1', 'chr1A'],
             [1, 'patient1', 'g1', 'chr1B'],
         ])
     }
 	
-	void testUniqueHaplotypeNovelVariant() {
-		/* Test for a unique haplotype consisting of a novel variant (does not exist in any known
+	void testNovelHaplotypeNovelVariant() {
+		/* Test for a novel haplotype consisting of a novel variant (does not exist in any known
 		 * haplotypes).
 		 */
 		def sampleData = [
@@ -769,14 +769,14 @@ public class PipelineTest extends DBTest {
 				['patient1', 'chr1B', 'rs3', 'T', 'hom'],
 			])
 		assertJobTable('job_patient_gene_haplotype', [])
-		assertJobTable('job_patient_unique_haplotype', [
+		assertJobTable('job_patient_novel_haplotype', [
 			[1, 'patient1', 'g1', 'chr1A'],
 			[1, 'patient1', 'g1', 'chr1B'],
 		])
 	}
 	
-	void testUniqueHaplotypeNovelVariantIncomplete() {
-		/* Test for a unique haplotype consisting of a novel variant (does not exist in any known
+	void testNovelHaplotypeNovelVariantIncomplete() {
+		/* Test for a novel haplotype consisting of a novel variant (does not exist in any known
 		 * haplotypes), that is lacking variants for all snps in a gene.
 		 */
 		def sampleData = [
@@ -797,14 +797,14 @@ public class PipelineTest extends DBTest {
 				['patient1', 'chr1B', 'rs1', 'G', 'hom'],
 			])
 		assertJobTable('job_patient_gene_haplotype', [])
-		assertJobTable('job_patient_unique_haplotype', [
+		assertJobTable('job_patient_novel_haplotype', [
 			[1, 'patient1', 'g1', 'chr1A'],
 			[1, 'patient1', 'g1', 'chr1B'],
 		])
 	}
 	
-	void testUniqueHaplotypeExistingVariantsIncomplete() {
-		/* Test for a unique haplotype consisting of existing variants (from already known 
+	void testNovelHaplotypeExistingVariantsIncomplete() {
+		/* Test for a novel haplotype consisting of existing variants (from already known 
          * haplotypes), that is lacking variants for all snps in a gene.
 		 */
 		def sampleData = [
@@ -827,14 +827,14 @@ public class PipelineTest extends DBTest {
                 ['patient1', 'chr1B', 'rs2', 'G', 'hom'],
 			])
 		assertJobTable('job_patient_gene_haplotype', [])
-		assertJobTable('job_patient_unique_haplotype', [
+		assertJobTable('job_patient_novel_haplotype', [
 			[1, 'patient1', 'g1', 'chr1A'],
 			[1, 'patient1', 'g1', 'chr1B'],
 		])
 	}
 	
-	void testNoUniqueHaplotypeAmbiguousExisting() {
-		/* Test for the absence of any unique haplotypes, since the variants observed are an ambiguous subset of existing haplotypes.
+	void testNoNovelHaplotypeAmbiguousExisting() {
+		/* Test for the absence of any novel haplotypes, since the variants observed are an ambiguous subset of existing haplotypes.
 		 */
 		def sampleData = [
 			gene_haplotype_variant: [
@@ -854,11 +854,11 @@ public class PipelineTest extends DBTest {
 				['patient1', 'chr1B', 'rs3', 'C', 'hom'],
 			])
 		assertJobTable('job_patient_gene_haplotype', [])
-		assertJobTable('job_patient_unique_haplotype', [])
+		assertJobTable('job_patient_novel_haplotype', [])
 	}
 
-	void testNoUniqueHaplotypeEmptyAllele() {
-        /* Test for the absence of any unique haplotypes when the input variants have a snp for a 
+	void testNoNovelHaplotypeEmptyAllele() {
+        /* Test for the absence of any novel haplotypes when the input variants have a snp for a 
          * gene, but with physical chromsome, allele, and zygosity null (this is how variants with 
          * '' for allele are stored in job_patient_variant).
          */
@@ -880,7 +880,7 @@ public class PipelineTest extends DBTest {
 				['patient1', null, 'rs1', null, null],
 			])
 		assertJobTable('job_patient_gene_haplotype', [])
-		assertJobTable('job_patient_unique_haplotype', [])
+		assertJobTable('job_patient_novel_haplotype', [])
     }
 
 }

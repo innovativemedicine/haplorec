@@ -16,7 +16,7 @@ public class Pipeline {
         genePhenotype               : 'job_patient_gene_phenotype',
         genotype                    : 'job_patient_genotype',
         geneHaplotype               : 'job_patient_gene_haplotype',
-        uniqueHaplotype             : 'job_patient_unique_haplotype',
+        novelHaplotype             : 'job_patient_novel_haplotype',
         genotypeDrugRecommendation  : 'job_patient_genotype_drug_recommendation',
         phenotypeDrugRecommendation : 'job_patient_phenotype_drug_recommendation',
         job                         : 'job',
@@ -172,7 +172,7 @@ public class Pipeline {
             saveAs: 'existing')
     }
 
-    static def geneHaplotypeToUniqueHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
+    static def geneHaplotypeToNovelHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
         variantToVariantGene(kwargs, sql)
         def columns = ['job_id', 'patient_id', 'gene_name', 'physical_chromosome']
@@ -257,7 +257,7 @@ public class Pipeline {
             // |having count(*) = 1
 
         Sql.selectAs(sql, query, columns,
-			intoTable: kwargs.uniqueHaplotype,
+			intoTable: kwargs.novelHaplotype,
 			sqlParams: kwargs.sqlParams,
             saveAs: 'existing')
         // cleanup the helper tables
@@ -338,10 +338,10 @@ public class Pipeline {
                 dependency(refId: 'genotype')
             }
         }
-        dependencies.uniqueHaplotype = builder.dependency(id: 'uniqueHaplotype', target: 'uniqueHaplotype', 
+        dependencies.novelHaplotype = builder.dependency(id: 'novelHaplotype', target: 'novelHaplotype', 
         name: "Novel Haplotypes",
-        table: tbl.uniqueHaplotype,
-        fileUpload: canUpload('uniqueHaplotype')) {
+        table: tbl.novelHaplotype,
+        fileUpload: canUpload('novelHaplotype')) {
             dependency(refId: 'geneHaplotype')
         }
 
@@ -423,8 +423,8 @@ public class Pipeline {
         dependencies.geneHaplotype.rule = { ->
             variantToGeneHaplotype(pipelineKwargs, sql)
         }
-        dependencies.uniqueHaplotype.rule = { ->
-            geneHaplotypeToUniqueHaplotype(pipelineKwargs, sql)
+        dependencies.novelHaplotype.rule = { ->
+            geneHaplotypeToNovelHaplotype(pipelineKwargs, sql)
         }
         dependencies.variant.rule = { ->
             if (kwargs.containsKey('variants')) {
@@ -462,7 +462,7 @@ public class Pipeline {
 
     static def buildAll(job) {
         Set<Dependency> built = []
-        job.uniqueHaplotype.build(built)
+        job.novelHaplotype.build(built)
         job.phenotypeDrugRecommendation.build(built)
         job.genotypeDrugRecommendation.build(built)
     }

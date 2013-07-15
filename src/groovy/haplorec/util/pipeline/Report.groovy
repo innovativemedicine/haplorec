@@ -12,123 +12,6 @@ import haplorec.util.Row
 
 public class Report {
 
-    public static class GeneHaplotypeMatrix {
-
-        // The gene_name that this haplotype matrix is for.
-        def geneName
-        // A list of snp_id's, representing the snps for this gene.
-        List snpIds
-        // An iterable over rows of snp_id, allele, patient_id, physical_chromosome,
-        // ordered by those fields.
-        def patientVariants
-        // An iterable over rows of haplotype_name, snp_id, allele
-        // ordered by those fields.
-        def haplotypeVariants
-
-        String toString() {
-            "GeneHaplotypeMatrix(${[geneName, snpIds, iterAsList(patientVariants), iterAsList(haplotypeVariants)].join(', ')})"
-        }
-
-        @EqualsAndHashCode
-        @ToString
-        static class Haplotype {
-            String haplotypeName
-        }
-
-        @EqualsAndHashCode
-        @ToString
-        static class NovelHaplotype {
-            String patientId
-            String physicalChromosome
-        }
-
-        def each(Closure f) {
-            /* Iterate over rows of the gene-haplotype matrix, like this:
-             *
-             * Haplotype                      | rs1050828 | rs1050829 | rs5030868 | rs137852328 | rs76723693 | rs2230037
-             * B (wildtype)                   | C         | T         | G         | C           | A          | G
-             * A-202A_376G                    | T         | C         | G         | C           | A          | G
-             * A- 680T_376G                   | C         | C         | G         | A           | A          | G
-             * A-968C_376G                    | C         | C         | G         | C           | G          | G
-             * Mediterranean Haplotype        | C         | T         | A         | C           | A          | A
-             * Sample NA22302-1, Chromosome A | T         | T         | G         |             |            | 
-             * Sample NA22302-1, Chromosome B | T         | T         | A         |             |            | 
-             * Sample NA22302-2, Chromosome A | T         | T         | G         |             |            | 
-             * Sample NA22302-2, Chromosome B | T         | T         | G         |             |            | 
-             *
-             * The "Haplotype ..." header is just for readibility, it isn't actually a row that 
-             * we iterate over.
-             *
-             * Blank allele cells are represented as null's.
-             *
-             * f is a function that accepts 2 arguments:
-             * 1) an instance of Haplotype or NovelHaplotype
-             * 2) an iterable of alleles for the snpIds of this gene
-             *
-             */ 
-
-            def alleles = { variants ->
-                def snpIdToAllele = variants.inject([:]) { m, variant ->
-                    m[variant.snp_id] = variant.allele
-                    m
-                }
-                return snpIds.collect { it in snpIdToAllele ? snpIdToAllele[it] : null }
-            }
-            Row.groupBy(haplotypeVariants, ['haplotype_name']).each { variants ->
-                f(new Haplotype(haplotypeName: variants[0].haplotype_name), alleles(variants))
-            }
-            Row.groupBy(patientVariants, ['patient_id', 'physical_chromosome']).each { variants ->
-                def patientId = variants[0].patient_id
-                f(
-                    new NovelHaplotype(
-                        patientId: variants[0].patient_id,
-                        physicalChromosome: variants[0].physical_chromosome,
-                    ),
-                    alleles(variants),
-                )
-            }
-
-        }
-
-    }
-
-    private static GroovyRowResult nextRow(ResultSet rs) throws SQLException {
-        ResultSetMetaData md = rs.getMetaData();
-        int columns = md.getColumnCount();
-        ArrayList list = new ArrayList(50);
-        if (rs.next()) {
-            HashMap row = new HashMap(columns);
-            for(int i = 1; i <= columns; i++){           
-                row.put(md.getColumnName(i), rs.getObject(i));
-            }
-            return new GroovyRowResult(row);
-        }
-        return null;
-    }
-
-    private static def stmtIter(groovy.sql.Sql sql, String sqlStr) {
-        def stmt = sql.connection.prepareStatement(sqlStr)
-        ResultSet rs = null
-        return new Object() {
-            def execute(Object... params) {
-                (1..params.size()).each { i ->
-                    stmt.setObject(i, params[i-1])
-                }
-                rs = stmt.executeQuery()
-            }
-            def each(Closure f) {
-                if (rs == null) {
-                    throw new IllegalStateException("Must call execute(params) before next()")
-                }
-                while (rs.next()) {
-                    def row = nextRow(rs)
-                    f(row)
-                }
-                rs.close()
-            }
-        }
-    }
-
     /* Given a job_id, return an iterator over GeneHaplotypeMatrix's, 1 for each distinct gene identified in 
      * uniqueHaplotype (for this job).
      */
@@ -299,6 +182,124 @@ public class Report {
         def xs = []
         iter.each { xs.add(it) }
         return xs
+    }
+
+    public static class GeneHaplotypeMatrix {
+
+        // The gene_name that this haplotype matrix is for.
+        def geneName
+        // A list of snp_id's, representing the snps for this gene.
+        List snpIds
+        // An iterable over rows of snp_id, allele, patient_id, physical_chromosome,
+        // ordered by those fields.
+        def patientVariants
+        // An iterable over rows of haplotype_name, snp_id, allele
+        // ordered by those fields.
+        def haplotypeVariants
+
+        String toString() {
+            def j = { xs -> xs.join(',' + String.format('%n')) }
+            "GeneHaplotypeMatrix(${j([geneName, snpIds, '[' + j(iterAsList(patientVariants)) + ']', '[' + j(iterAsList(haplotypeVariants)) + ']'])})"
+        }
+
+        @EqualsAndHashCode
+        @ToString
+        static class Haplotype {
+            String haplotypeName
+        }
+
+        @EqualsAndHashCode
+        @ToString
+        static class NovelHaplotype {
+            String patientId
+            String physicalChromosome
+        }
+
+        def each(Closure f) {
+            /* Iterate over rows of the gene-haplotype matrix, like this:
+             *
+             * Haplotype                      | rs1050828 | rs1050829 | rs5030868 | rs137852328 | rs76723693 | rs2230037
+             * B (wildtype)                   | C         | T         | G         | C           | A          | G
+             * A-202A_376G                    | T         | C         | G         | C           | A          | G
+             * A- 680T_376G                   | C         | C         | G         | A           | A          | G
+             * A-968C_376G                    | C         | C         | G         | C           | G          | G
+             * Mediterranean Haplotype        | C         | T         | A         | C           | A          | A
+             * Sample NA22302-1, Chromosome A | T         | T         | G         |             |            | 
+             * Sample NA22302-1, Chromosome B | T         | T         | A         |             |            | 
+             * Sample NA22302-2, Chromosome A | T         | T         | G         |             |            | 
+             * Sample NA22302-2, Chromosome B | T         | T         | G         |             |            | 
+             *
+             * The "Haplotype ..." header is just for readibility, it isn't actually a row that 
+             * we iterate over.
+             *
+             * Blank allele cells are represented as null's.
+             *
+             * f is a function that accepts 2 arguments:
+             * 1) an instance of Haplotype or NovelHaplotype
+             * 2) an iterable of alleles for the snpIds of this gene
+             *
+             */ 
+
+            def alleles = { variants ->
+                def snpIdToAllele = variants.inject([:]) { m, variant ->
+                    m[variant.snp_id] = variant.allele
+                    m
+                }
+                return snpIds.collect { it in snpIdToAllele ? snpIdToAllele[it] : null }
+            }
+            Row.groupBy(haplotypeVariants, ['haplotype_name']).each { variants ->
+                f(new Haplotype(haplotypeName: variants[0].haplotype_name), alleles(variants))
+            }
+            Row.groupBy(patientVariants, ['patient_id', 'physical_chromosome']).each { variants ->
+                def patientId = variants[0].patient_id
+                f(
+                    new NovelHaplotype(
+                        patientId: variants[0].patient_id,
+                        physicalChromosome: variants[0].physical_chromosome,
+                    ),
+                    alleles(variants),
+                )
+            }
+
+        }
+
+    }
+
+    private static GroovyRowResult nextRow(ResultSet rs) throws SQLException {
+        ResultSetMetaData md = rs.getMetaData();
+        int columns = md.getColumnCount();
+        ArrayList list = new ArrayList(50);
+        if (rs.next()) {
+            HashMap row = new HashMap(columns);
+            for(int i = 1; i <= columns; i++){           
+                row.put(md.getColumnName(i), rs.getObject(i));
+            }
+            return new GroovyRowResult(row);
+        }
+        return null;
+    }
+
+    private static def stmtIter(groovy.sql.Sql sql, String sqlStr) {
+        def stmt = sql.connection.prepareStatement(sqlStr)
+        ResultSet rs = null
+        return new Object() {
+            def execute(Object... params) {
+                (1..params.size()).each { i ->
+                    stmt.setObject(i, params[i-1])
+                }
+                rs = stmt.executeQuery()
+            }
+            def each(Closure f) {
+                if (rs == null) {
+                    throw new IllegalStateException("Must call execute(params) before next()")
+                }
+                while (rs.next()) {
+                    def row = nextRow(rs)
+                    f(row)
+                }
+                rs.close()
+            }
+        }
     }
 
 }

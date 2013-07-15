@@ -33,7 +33,7 @@ public class Report {
 	                        |where gene_name = ?
 	                        |order by gene_name, haplotype_name, snp_id
 	                        |""".stripMargin())
-	                sql.eachRow("select distinct gene_name from ${kwargs.uniqueHaplotype} where job_id = :job_id".toString(), kwargs.sqlParams) { row ->
+	                sql.eachRow("select distinct gene_name from ${kwargs.uniqueHaplotype} where job_id = :job_id order by gene_name".toString(), kwargs.sqlParams) { row ->
 	                    def snpIds = sql.rows("select snp_id from gene_snp where gene_name = :gene_name order by snp_id", row).collect { it.snp_id }
 	                    patientVariantsStmt.execute(kwargs.sqlParams.job_id, row.gene_name)
 	                    haplotypeVariantsStmt.execute(row.gene_name)
@@ -271,14 +271,11 @@ public class Report {
         ResultSetMetaData md = rs.getMetaData();
         int columns = md.getColumnCount();
         ArrayList list = new ArrayList(50);
-        if (rs.next()) {
-            HashMap row = new HashMap(columns);
-            for(int i = 1; i <= columns; i++){           
-                row.put(md.getColumnName(i), rs.getObject(i));
-            }
-            return new GroovyRowResult(row);
+        HashMap row = new HashMap(columns);
+        for(int i = 1; i <= columns; i++){           
+            row.put(md.getColumnName(i), rs.getObject(i));
         }
-        return null;
+        return new GroovyRowResult(row);
     }
 	
 	private static def withConnection(groovy.sql.Sql sql, Closure f) {

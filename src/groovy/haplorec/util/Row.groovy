@@ -206,6 +206,15 @@ class Row {
      */
     static def asDSV(Map kwargs = [:], iter, Appendable stream) {
         if (kwargs.separator == null) { kwargs.separator = '\t' }
+        if (kwargs.header == null) {
+            kwargs.header = { firstRow ->
+                if (firstRow instanceof Map) {
+                    firstRow.keySet()
+                } else {
+                    return firstRow
+                }
+            }
+        }
         if (kwargs.null == null) { 
             kwargs.null = { v -> 
                 (v == null) ? '' : v.toString()
@@ -214,20 +223,17 @@ class Row {
 
         def allButLast = { Map kw = [:], xs ->
             def i = 0
-            def iterator = xs.iterator()
-            def next
-            if (iterator.hasNext()) {
-                next = iterator.next()
-                i += 1
-            }
-            while (iterator.hasNext()) {
-                kw.do(next)
-                next = iterator.next()    
+            def previous
+            xs.each { x ->
+                if (i != 0) {
+                    kw.do(previous)
+                }
+                previous = x
                 i += 1
             }
             if (i != 0) {
                 // there is a last
-                kw.last(next)
+                kw.last(previous)
             }
         }
 
@@ -246,10 +252,17 @@ class Row {
         }
         iter.each { row ->
             if (i == 0) {
-                header = row.keySet()
-                output(header)
+                header = kwargs['header'](row)
+                if (header != null && row instanceof Map) {
+                    // The first row is also a data row
+                    output(header)
+                }
             }
-            output(header.collect { row[it] })
+			if (header != null && row instanceof Map) {
+				output(header.collect { row[it] })
+			} else {
+				output(row)
+			}
             i += 1
         }
     }

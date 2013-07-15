@@ -19,25 +19,27 @@ public class Report {
         kwargs += Pipeline.tables(kwargs)
         return new Object() {
             def each(Closure f) {
-                def patientVariantsStmt = stmtIter(sql, """\
-                        |select snp_id, allele, patient_id, physical_chromosome
-                        |from ${kwargs.uniqueHaplotype}
-                        |join ${kwargs.variant} using (job_id, patient_id, physical_chromosome)
-                        |where job_id = ? and gene_name = ?
-                        |order by job_id, gene_name, snp_id, patient_id, physical_chromosome
-                        |""".stripMargin())
-                def haplotypeVariantsStmt = stmtIter(sql, """
-                        |select haplotype_name, snp_id, allele
-                        |from gene_haplotype_variant
-                        |where gene_name = ?
-                        |order by gene_name, haplotype_name, snp_id
-                        |""".stripMargin())
-                sql.eachRow("select distinct gene_name from ${kwargs.uniqueHaplotype} where job_id = :job_id".toString(), kwargs.sqlParams) { row ->
-                    def snpIds = sql.rows("select snp_id from gene_snp where gene_name = :gene_name order by snp_id", row).collect { it.snp_id }
-                    patientVariantsStmt.execute(kwargs.sqlParams.job_id, row.gene_name)
-                    haplotypeVariantsStmt.execute(row.gene_name)
-                    f(new GeneHaplotypeMatrix(geneName: row.gene_name, snpIds: snpIds, patientVariants: patientVariantsStmt, haplotypeVariants: haplotypeVariantsStmt))
-                }
+				withConnection(sql) { connection ->
+	                def patientVariantsStmt = stmtIter(connection, """\
+	                        |select snp_id, allele, patient_id, physical_chromosome
+	                        |from ${kwargs.uniqueHaplotype}
+	                        |join ${kwargs.variant} using (job_id, patient_id, physical_chromosome)
+	                        |where job_id = ? and gene_name = ?
+	                        |order by job_id, gene_name, patient_id, physical_chromosome, snp_id
+	                        |""".stripMargin())
+	                def haplotypeVariantsStmt = stmtIter(connection, """
+	                        |select haplotype_name, snp_id, allele
+	                        |from gene_haplotype_variant
+	                        |where gene_name = ?
+	                        |order by gene_name, haplotype_name, snp_id
+	                        |""".stripMargin())
+	                sql.eachRow("select distinct gene_name from ${kwargs.uniqueHaplotype} where job_id = :job_id".toString(), kwargs.sqlParams) { row ->
+	                    def snpIds = sql.rows("select snp_id from gene_snp where gene_name = :gene_name order by snp_id", row).collect { it.snp_id }
+	                    patientVariantsStmt.execute(kwargs.sqlParams.job_id, row.gene_name)
+	                    haplotypeVariantsStmt.execute(row.gene_name)
+	                    f(new GeneHaplotypeMatrix(geneName: row.gene_name, snpIds: snpIds, patientVariants: patientVariantsStmt, haplotypeVariants: haplotypeVariantsStmt))
+	                }
+				}
             }
         }
     }
@@ -278,9 +280,24 @@ public class Report {
         }
         return null;
     }
+	
+	private static def withConnection(groovy.sql.Sql sql, Closure f) {
+		if (sql.connection == null) {
+			// This Sql instance was created from a DataSource.
+			def connection = sql.dataSource.getConnection()
+			try {
+				f(connection)
+			} finally {
+                // Return the connection to the connection pool.
+				connection.close()
+			}
+		} else {
+			f(sql.connection)
+		}
+	}
 
-    private static def stmtIter(groovy.sql.Sql sql, String sqlStr) {
-        def stmt = sql.connection.prepareStatement(sqlStr)
+    private static def stmtIter(connection, String sqlStr) {
+        def stmt = connection.prepareStatement(sqlStr)
         ResultSet rs = null
         return new Object() {
             def execute(Object... params) {

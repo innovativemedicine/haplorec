@@ -339,7 +339,7 @@ public class Pipeline {
             }
         }
         dependencies.uniqueHaplotype = builder.dependency(id: 'uniqueHaplotype', target: 'uniqueHaplotype', 
-        name: "Unique Haplotypes",
+        name: "Novel Haplotypes",
         table: tbl.uniqueHaplotype,
         fileUpload: canUpload('uniqueHaplotype')) {
             dependency(refId: 'geneHaplotype')

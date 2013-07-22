@@ -38,20 +38,31 @@ class ReportTest extends GroovyTestCase {
             rows(new Report.GeneHaplotypeMatrix(geneName: geneName, snpIds: snpIds, patientVariants: patientVariants, haplotypeVariants: haplotypeVariants)))
     }
 
-    def generatePatientVariants(Map kwargs = [:], patientIds, variants) {
+    static def generatePatientVariants(Map kwargs = [:], patientIds, variants) {
         if (kwargs.physicalChromosomes == null) { kwargs.physicalChromosomes = ['A', 'B'] }
         def xs = []
         patientIds.each { patientId ->
             kwargs.physicalChromosomes.each { physicalChromosome ->
-                variants.each { snpId, allele ->
-                    xs.add([patient_id: patientId, snp_id: snpId, allele: allele, physical_chromosome: physicalChromosome])
+                def addVariants = { vars, zygosity ->
+                    vars.each { snpId, allele ->
+                        xs.add([patient_id: patientId, snp_id: snpId, allele: allele, physical_chromosome: physicalChromosome, zygosity: zygosity])
+                    }
+                }
+                if (variants.containsKey('het')) {
+                    addVariants(variants.het, 'het')
+                }
+                if (variants.containsKey('hom')) {
+                    addVariants(variants.hom, 'hom')
+                }
+                if (!variants.containsKey('het') && !variants.containsKey('hom')) {
+                    addVariants(variants, null)
                 }
             }
         }
         return xs
     }
 
-    def zipEach(iters, Closure f) {
+    static def zipEach(iters, Closure f) {
         int i = 0
         while (true) {
             if (iters.any { it.size() == i }) {
@@ -63,7 +74,7 @@ class ReportTest extends GroovyTestCase {
         }
     }
 
-    def generateHaplotypeVariants(Map kwargs = [:], snpIds, haplotypes) {
+    static def generateHaplotypeVariants(Map kwargs = [:], snpIds, haplotypes) {
         def xs = []
         haplotypes.each { haplotypeName, alleles ->
             zipEach([snpIds, alleles]) { snpId, allele ->
@@ -166,7 +177,7 @@ class ReportTest extends GroovyTestCase {
             ])
     }
 
-    def rows(iter) {
+    static def rows(iter) {
         def xs = []
         iter.each { Object... args -> xs.add(args as List) }
         xs

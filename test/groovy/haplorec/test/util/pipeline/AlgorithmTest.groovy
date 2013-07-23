@@ -31,10 +31,157 @@ class AlgorithmTest extends GroovyTestCase {
         matrix = new GeneHaplotypeMatrix(geneName: geneName, snpIds: snpIds, haplotypeVariants: haplotypeVariants)
     }
 
-    def disambiguateHetsTest(hetVariants, expectedRows) {
+    void testDisambiguateHets3Snps2KnownHaplotypes() {
+        /* Test that we can disambiguate 'Mediterranean Haplotype' / 'B (wildtype)'.
+         * Given:
+         * rs1050828 CT
+         * rs1050829 TC
+         * rs5030868 AG
+         * The total possible combinations are:
+           rs1050828 | rs1050829 | rs5030868 | Haplotype
+           C         | T         | A         | 'Mediterranean Haplotype'
+           T         | C         | G         | 'A-202A_376G'
+
+           C         | T         | G         | 'B (wildtype)'
+           T         | C         | A         | Novel
+
+           C         | C         | A         | Novel
+           T         | T         | G         | Novel
+
+           C         | C         | G         | 'A- 680T_376G' OR 'A-968C_376G'
+           T         | T         | A         | Novel
+
+         * We don't report Novel/Novel. 
+         * Since CCG / TTA could have two possible known haplotypes, we don't call it.
+         */
+        disambiguateHetsTest(
+            generatePatientVariants(
+                ['patient1'],
+                [
+                    het: [
+                        rs1050828: 'CT',
+                        rs1050829: 'TC',
+                        rs5030868: 'AG',
+                    ],
+                ],
+            ),
+            generateExpected(
+                ['rs1050828', 'rs1050829', 'rs5030868'],
+                [
+                    AKnownBKnown: [
+                        [
+                            ['C', 'T', 'A'],
+                            ['T', 'C', 'G'],
+                        ],
+                    ],
+                    AKnownBNovel: [
+                        [
+                            ['C', 'T', 'G'],
+                            ['T', 'C', 'A'],
+                        ],
+                    ],
+                ]
+            ),
+        )
+    }
+
+    void testDisambiguateHets1Novel1KnownHaplotype() {
+        /* Test that TC (A-202A_376G) / CG (Novel) is detected (i.e. 1 known, 1 novel).
+         */
+        disambiguateHetsTest(
+            generatePatientVariants(
+                ['patient1'],
+                [
+                    het: [
+                        rs1050828: 'TC',
+                        rs1050829: 'CG',
+                    ],
+                ],
+            ),
+            generateExpected(
+                ['rs1050828', 'rs1050829'],
+                [
+                    AKnownBKnown: [
+                    ],
+                    AKnownBNovel: [
+                        [
+                            ['T', 'C'],
+                            ['C', 'G'],
+                        ],
+                    ],
+                ]
+            ),
+        )
+    }
+
+    void testDisambiguateHets2PotentialHaplotypeCombos() {
+        /* Test that we detect both *1/*2 and *3/*4 (since it's ambiguous which one it might be).
+         */
+        def geneName = 'g1'
+        def snpIds = ['rs1', 'rs2']
+        def haplotypeVariants = ReportTest.generateHaplotypeVariants(
+            snpIds,
+            [
+            '*1': ['A', 'A'], 
+            '*2': ['T', 'T'], 
+            '*3': ['A', 'T'], 
+            '*4': ['T', 'A'], 
+            ],
+        )
+        def matrix = new GeneHaplotypeMatrix(geneName: geneName, snpIds: snpIds, haplotypeVariants: haplotypeVariants)
+        disambiguateHetsTest(
+            matrix: matrix,
+            generatePatientVariants(
+                ['patient1'],
+                [
+                    het: [
+                        rs1: 'AT',
+                        rs2: 'AT',
+                    ],
+                ],
+            ),
+            generateExpected(
+                ['rs1', 'rs2'],
+                [
+                    AKnownBKnown: [
+                        [
+                            ['A', 'A'],
+                            ['T', 'T'],
+                        ],
+                        [
+                            ['A', 'T'],
+                            ['T', 'A'],
+                        ],
+                    ],
+                    AKnownBNovel: [
+                    ],
+                ]
+            ),
+        )
+    }
+
+    def generateExpected(snpIds, expectedAlleles) {
+        def asRows = { sequencePairs ->
+            sequencePairs.collect { s1, s2 ->
+                def rows = { s, physicalChromosome ->
+                    [s, snpIds].transpose().collect { allele, snpId ->
+                        [allele: allele, snp_id: snpId, physical_chromosome: physicalChromosome]
+                    }
+                }
+                (rows(s1, 'A') + rows(s2, 'B')).flatten()
+            }
+        }
+        return [
+            AKnownBKnown: asRows(expectedAlleles.AKnownBKnown),
+            AKnownBNovel: asRows(expectedAlleles.AKnownBNovel),
+        ]
+    }
+
+    def disambiguateHetsTest(Map kwargs = [:], hetVariants, expectedRows) {
+        if (kwargs.matrix == null) { kwargs.matrix = matrix }
         assertEquals(
             expectedRows,
-            Algorithm.disambiguateHets(matrix, hetVariants))
+            Algorithm.disambiguateHets(kwargs.matrix, hetVariants))
     }
 
     static def generatePatientVariants(Map kwargs = [:], patientIds, variants) {
@@ -59,29 +206,4 @@ class AlgorithmTest extends GroovyTestCase {
         return xs
     }
 
-    void testDisambiguateHets3Snps2KnownHaplotypes() {
-        /* Test that we can disambiguate 'Mediterranean Haplotype' / 'B (wildtype)'.
-         */
-        disambiguateHetsTest(
-            generatePatientVariants(
-                ['patient1'],
-                [
-                    het: [
-                        rs1050828: 'CT',
-                        rs1050829: 'TC',
-                        rs5030868: 'AG',
-                    ],
-                ],
-            ),
-            [
-                [allele: 'C', snp_id: 'rs1050828', physical_chromosome: 'A'],
-                [allele: 'T', snp_id: 'rs1050829', physical_chromosome: 'A'],
-                [allele: 'A', snp_id: 'rs5030868', physical_chromosome: 'A'],
-                [allele: 'T', snp_id: 'rs1050828', physical_chromosome: 'B'],
-                [allele: 'C', snp_id: 'rs1050829', physical_chromosome: 'B'],
-                [allele: 'G', snp_id: 'rs5030868', physical_chromosome: 'B'],
-            ])
-    }
-
 }
-

@@ -29,7 +29,37 @@ public class Algorithm {
      *     ...,
      * ]
      */
-    static def disambiguateHets(GeneHaplotypeMatrix geneHaplotypeMatrix, hetVariants) {
+    private static class HetSequence {
+        String allele 
+        HetSequence rest
+
+        List alleles(int size) {
+            def xs = new ArrayList(size) 
+            HetSequence node = this
+            for (int i = 0; i < size; i++) {
+                xs[size-i-1] = node.allele
+                node = node.rest
+            }
+            return xs
+        }
+
+        /* Useful for debugging.
+         */
+        List _allelesSoFar() {
+            def xs = []
+            HetSequence node = this
+            while (node != null) {
+                xs.add(0, node.allele)
+                node = node.rest
+            }
+            return xs
+        }
+
+        String toString() {
+            _allelesSoFar().toString()
+        }
+    }
+    static def disambiguateHets(Map kwargs = [:], GeneHaplotypeMatrix geneHaplotypeMatrix, hetVariants) {
         def sortedHets = hetVariants.sort(false) { [it.snp_id, it.allele] }
         eachN(2, sortedHets) { h1, h2 ->
             if (h1.snp_id != h2.snp_id) {
@@ -50,6 +80,7 @@ public class Algorithm {
         }
 
         def hetSnps = sortedHets.collect { it.snp_id }.unique()
+        int numHets = hetSnps.size()
         def otherStrand = { AAlleles -> 
             def BAlleles = new ArrayList(AAlleles.size())
             def i = 0
@@ -72,12 +103,11 @@ public class Algorithm {
          */
         def hetSequenceToHaplotype = [:]
 
-        /* TODO: use linked list data structure to prevent inefficient arraylist concatenation
-         */
         def uniqueSnps 
         uniqueSnps = { i, variants, sequence, haplotypes ->
             if (i >= variants.size() && haplotypes.size() == 1) {
-                hetSequenceToHaplotype[sequence] = haplotypes.iterator().next() 
+                def alleles = sequence.alleles(numHets)
+                hetSequenceToHaplotype[alleles] = haplotypes.iterator().next() 
             } else if (haplotypes.size() == 0) {
                 /* No known haplotype with this sequence.
                  */
@@ -94,7 +124,7 @@ public class Algorithm {
                     */
 					Set retain = variantToHaplotypes[[variant.snp_id, variant.allele]]
                     haps.retainAll(retain ?: [])
-                    uniqueSnps(i+2, variants, sequence + [variant.allele], haps)
+                    uniqueSnps(i+2, variants, new HetSequence(allele: variant.allele, rest: sequence), haps)
                 }
                 def v1 = variants[i] 
                 def v2 = variants[i+1]
@@ -102,25 +132,44 @@ public class Algorithm {
                 recurse(v2)
             }
         }
-        uniqueSnps(0, sortedHets, [], geneHaplotypes)
+        uniqueSnps(0, sortedHets, null, geneHaplotypes)
 
         def hetSequences = new LinkedHashSet(hetSequenceToHaplotype.keySet())
-        def numAnswers = 0
-        def s1
-        def s2
+        /* List of sequences ['A', 'T', ...] for physical chromosomes A and B, where both identify known haplotypes.
+         */
+        def A = []
+        def B = []
+        /* Same as above, but where A is known and B is novel.
+         */
+        def AKnown = []
+        def BNovel = []
         while (hetSequences.size() > 0) {
             def s = hetSequences.iterator().next()
             hetSequences.remove(s)
             def sOther = otherStrand(s)
             if (hetSequences.contains(sOther)) {
-                assert s1 == null
-                assert s2 == null
-                s1 = s
-                s2 = sOther
                 hetSequences.remove(sOther)
+                /* Return physical chromosome sequences in a consistent ordering (ordered by alleles, with physical 
+                 * chromosome A having the least ordered sequence).
+                 */
+                def (s1, s2) = [s, sOther].sort()
+                A.add(s1)
+                B.add(s2)
+            } else {
+                /* s identifies a known haplotype, but sOther identifies a novel haplotype.  
+                 * Given a choice between calling: 
+                 * 1) 'known haplotype' / 'known haplotype'
+                 * 2) 'known haplotype' / 'novel haplotype'
+                 * we have a preference for calling 1).
+                 */
+                AKnown.add(s)
+                BNovel.add(sOther)
             }
         }
-        if (s1 != null && s2 != null) {
+        assert A.size() == B.size()
+        assert AKnown.size() == BNovel.size()
+
+        def variants = { s1, s2 ->
             def asVariants = { physicalChromosome, alleles ->
                 [alleles, hetSnps].transpose().collect { allele, snpId -> 
                     [
@@ -130,12 +179,21 @@ public class Algorithm {
                     ]
                 }
             }
-			def variants = asVariants('A', s1)
-            variants.addAll(asVariants('B', s2))
-            return variants
-        } else {
-            return null
+            def vars = asVariants('A', s1)
+            vars.addAll(asVariants('B', s2))
+            return vars
         }
+        def pairsAsRows = { aSequences, bSequences ->
+            /* Return pairs of possible sequences in a consistent ordering (order by alleles, ordered by first sequence 
+             * then second sequence).
+             */
+            [aSequences, bSequences].transpose().sort().collect(variants)
+        }
+        return [
+            AKnownBKnown: pairsAsRows(A, B),
+            AKnownBNovel: pairsAsRows(AKnown, BNovel),
+        ]
+
     }
 
 }

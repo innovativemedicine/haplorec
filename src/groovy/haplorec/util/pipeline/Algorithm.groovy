@@ -21,7 +21,9 @@ public class Algorithm {
         }
     }
 
-    /* hetVariants: [
+    /* Given a gene-haplotype matrix for a gene, and heterzygous variants belonging to SNPs of that gene, disambiguate on 
+     * which physical chromosome the heterzygote SNPs occur.
+     * hetVariants: [
      *     [snpId: rs1, allele: A],
      *     [snpId: rs1, allele: T],
      *     [snpId: rs2, allele: A],
@@ -29,36 +31,6 @@ public class Algorithm {
      *     ...,
      * ]
      */
-    private static class HetSequence {
-        String allele 
-        HetSequence rest
-
-        List alleles(int size) {
-            def xs = new ArrayList(size) 
-            HetSequence node = this
-            for (int i = 0; i < size; i++) {
-                xs[size-i-1] = node.allele
-                node = node.rest
-            }
-            return xs
-        }
-
-        /* Useful for debugging.
-         */
-        List _allelesSoFar() {
-            def xs = []
-            HetSequence node = this
-            while (node != null) {
-                xs.add(0, node.allele)
-                node = node.rest
-            }
-            return xs
-        }
-
-        String toString() {
-            _allelesSoFar().toString()
-        }
-    }
     static def disambiguateHets(Map kwargs = [:], GeneHaplotypeMatrix geneHaplotypeMatrix, hetVariants) {
         def sortedHets = hetVariants.sort(false) { [it.snp_id, it.allele] }
         eachN(2, sortedHets) { h1, h2 ->
@@ -194,6 +166,38 @@ public class Algorithm {
             AKnownBNovel: pairsAsRows(AKnown, BNovel),
         ]
 
+    }
+    /* Helper class for disambiguateHets.
+     */
+    private static class HetSequence {
+        String allele 
+        HetSequence rest
+
+        List alleles(int size) {
+            def xs = new ArrayList(size) 
+            HetSequence node = this
+            for (int i = 0; i < size; i++) {
+                xs[size-i-1] = node.allele
+                node = node.rest
+            }
+            return xs
+        }
+
+        /* Useful for debugging.
+         */
+        List _allelesSoFar() {
+            def xs = []
+            HetSequence node = this
+            while (node != null) {
+                xs.add(0, node.allele)
+                node = node.rest
+            }
+            return xs
+        }
+
+        String toString() {
+            _allelesSoFar().toString()
+        }
     }
 
 }

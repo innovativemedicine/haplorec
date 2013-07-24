@@ -1,8 +1,9 @@
 package haplorec.test.util.pipeline
 
 import haplorec.util.pipeline.Report
-import haplorec.util.pipeline.Report.GeneHaplotypeMatrix.NovelHaplotype;
-import haplorec.util.pipeline.Report.GeneHaplotypeMatrix.Haplotype;
+import haplorec.util.data.GeneHaplotypeMatrix
+import haplorec.util.data.GeneHaplotypeMatrix.NovelHaplotype;
+import haplorec.util.data.GeneHaplotypeMatrix.Haplotype;
 
 class ReportTest extends GroovyTestCase {
 
@@ -35,7 +36,7 @@ class ReportTest extends GroovyTestCase {
     def geneHaplotypeMatrixTest(geneName, snpIds, patientVariants, haplotypeVariants, expectedRows) {
         assertEquals(
             expectedRows,
-            rows(new Report.GeneHaplotypeMatrix(geneName: geneName, snpIds: snpIds, patientVariants: patientVariants, haplotypeVariants: haplotypeVariants)))
+            rows(new GeneHaplotypeMatrix(geneName: geneName, snpIds: snpIds, patientVariants: patientVariants, haplotypeVariants: haplotypeVariants)))
     }
 
     static def generatePatientVariants(Map kwargs = [:], patientIds, variants) {

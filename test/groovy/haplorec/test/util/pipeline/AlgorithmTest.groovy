@@ -2,7 +2,7 @@ package haplorec.test.util.pipeline
 
 import haplorec.util.pipeline.Algorithm
 import haplorec.test.util.pipeline.ReportTest
-import haplorec.util.pipeline.Report.GeneHaplotypeMatrix
+import haplorec.util.data.GeneHaplotypeMatrix
 
 class AlgorithmTest extends GroovyTestCase {
 

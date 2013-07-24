@@ -1,6 +1,6 @@
 package haplorec.util.pipeline
 
-import haplorec.util.pipeline.Report.GeneHaplotypeMatrix
+import haplorec.util.data.GeneHaplotypeMatrix
 
 public class Algorithm {
 

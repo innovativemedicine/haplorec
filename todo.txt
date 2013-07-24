@@ -393,3 +393,5 @@ run aaron's PGX file
 - bug: figure out why some unique haplotypes have a null physical chromosome
   - it's because we record some variants that have '' as the allele as having a null physical 
     chromsome
+
+- add het_combo / het_combos to all job_patient tables

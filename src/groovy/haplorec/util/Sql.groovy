@@ -296,7 +296,7 @@ class Sql {
 	}
 	
     private static def engines = ['MEMORY', 'MyISAM', 'InnoDB']
-    private static def validSaveAs = engines + ['query', 'existing']
+    private static def validSaveAs = engines + ['query', 'existing', 'rows']
     private static def selectAs(Map kwargs = [:], groovy.sql.Sql sql, query, columns) {
         setDefaultKwargs(kwargs)
         if (engines.any { kwargs.saveAs == it }) {
@@ -311,6 +311,8 @@ class Sql {
         } else if (kwargs.saveAs == 'existing') {
             def qInsertInto = insertIntoSql(kwargs + [columns:columns], kwargs.intoTable, query)
             _sql kwargs, sql.&execute, qInsertInto
+        } else if (kwargs.saveAs == 'rows') {
+            _sql kwargs, sql.&rows, query
         } else {
             throw new IllegalArgumentException("Unknown saveAs type for outputting SQL results; saveAs was ${kwargs.saveAs} but must be one of " + validSaveAs.join(', '))
         }

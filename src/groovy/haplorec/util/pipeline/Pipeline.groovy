@@ -137,6 +137,29 @@ public class Pipeline {
         cleanup(sql, kwargs.variantGeneHaplotype, kwargs.sqlParams.job_id)
     }
 
+    /*
+    static def variantToGeneHaplotypeRedo(Map kwargs = [:], groovy.sql.Sql sql) {
+        setDefaultKwargs(kwargs)
+        // GeneName -> { PatientID }
+        def geneToPatientId = Sql.selectAs(sql, """\
+            |select distinct gene_name, patient_id
+            |from ${kwargs.variants}
+            |join gene_haplotype_variant using (gene_name)
+            |where job_id = :job_id
+            |""".stripMargin(),
+            sqlParams: kwargs.sqlParams,
+            saveAs: 'rows')
+            .inject([:]) { m, row ->
+                m.get(row.gene_name).add(row.patient_id)
+                return m
+            }
+        geneToPatientId.keySet().each { gene ->
+            def ghm = new GeneHaplotypeMatrix(g)
+        }
+    }
+    */
+
+
     static private def cleanup(groovy.sql.Sql sql, table, jobId) {
         sql.execute "delete from $table where job_id = :job_id".toString(), [job_id: jobId]
     }

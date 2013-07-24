@@ -1,13 +1,8 @@
 package haplorec.util.pipeline
 
-import groovy.transform.EqualsAndHashCode
-import groovy.transform.ToString
-import groovy.sql.GroovyRowResult
-import java.sql.ResultSet
-import java.sql.SQLException
-import java.sql.ResultSetMetaData
-
 import haplorec.util.Row
+import haplorec.util.data.GeneHaplotypeMatrix
+import haplorec.util.data.Sql
 // import haplorec.util.sql.Report (we use this, but we can't import it due to conflicting names)
 
 public class Report {
@@ -17,29 +12,23 @@ public class Report {
      */
     static def novelHaplotypeReport(Map kwargs = [:], groovy.sql.Sql sql) {
         kwargs += Pipeline.tables(kwargs)
+        if (kwargs.iterableManyTimes == null) { kwargs.iterableManyTimes = false }
         return new Object() {
             def each(Closure f) {
-				withConnection(sql) { connection ->
-	                def patientVariantsStmt = stmtIter(connection, """\
-	                        |select snp_id, allele, patient_id, physical_chromosome
-	                        |from ${kwargs.novelHaplotype}
-	                        |join ${kwargs.variant} using (job_id, patient_id, physical_chromosome)
-	                        |where job_id = ? and gene_name = ?
-	                        |order by job_id, gene_name, patient_id, physical_chromosome, snp_id
-	                        |""".stripMargin())
-	                def haplotypeVariantsStmt = stmtIter(connection, """
-	                        |select haplotype_name, snp_id, allele
-	                        |from gene_haplotype_variant
-	                        |where gene_name = ?
-	                        |order by gene_name, haplotype_name, snp_id
-	                        |""".stripMargin())
-	                sql.eachRow("select distinct gene_name from ${kwargs.novelHaplotype} where job_id = :job_id order by gene_name".toString(), kwargs.sqlParams) { row ->
-	                    def snpIds = sql.rows("select snp_id from gene_snp where gene_name = :gene_name order by snp_id", row).collect { it.snp_id }
-	                    patientVariantsStmt.execute(kwargs.sqlParams.job_id, row.gene_name)
-	                    haplotypeVariantsStmt.execute(row.gene_name)
-	                    f(new GeneHaplotypeMatrix(geneName: row.gene_name, snpIds: snpIds, patientVariants: patientVariantsStmt, haplotypeVariants: haplotypeVariantsStmt))
-	                }
-				}
+                def geneNames = sql.rows("""
+                    |select distinct gene_name 
+                    |from ${kwargs.novelHaplotype} 
+                    |where job_id = :job_id 
+                    |order by gene_name
+                    |""".stripMargin(), kwargs.sqlParams)
+                    .collect { it.gene_name }
+                geneNames.each { geneName ->
+                    f(connection,
+                        GeneHaplotypeMatrix.novelHaplotypeReport(sql, sqlParams.job_id, geneName,
+                            iterableManyTimes: kwargs.iterableManyTimes,
+                        )
+                    )
+                }
             }
         }
     }
@@ -178,142 +167,6 @@ public class Report {
                 aliases.get(k, k)
             },
         )
-    }
-
-    private static def iterAsList(iter) {
-        def xs = []
-        iter.each { xs.add(it) }
-        return xs
-    }
-
-    public static class GeneHaplotypeMatrix {
-
-        // The gene_name that this haplotype matrix is for.
-        def geneName
-        // A list of snp_id's, representing the snps for this gene.
-        List snpIds
-        // An iterable over rows of snp_id, allele, patient_id, physical_chromosome,
-        // ordered by those fields.
-        def patientVariants
-        // An iterable over rows of haplotype_name, snp_id, allele
-        // ordered by those fields.
-        def haplotypeVariants
-
-        String toString() {
-            def j = { xs -> xs.join(',' + String.format('%n')) }
-            "GeneHaplotypeMatrix(${j([geneName, snpIds, '[' + j(iterAsList(patientVariants)) + ']', '[' + j(iterAsList(haplotypeVariants)) + ']'])})"
-        }
-
-        @EqualsAndHashCode
-        @ToString
-        static class Haplotype {
-            String haplotypeName
-        }
-
-        @EqualsAndHashCode
-        @ToString
-        static class NovelHaplotype {
-            String patientId
-            String physicalChromosome
-        }
-
-        def each(Closure f) {
-            /* Iterate over rows of the gene-haplotype matrix, like this:
-             *
-             * Haplotype                      | rs1050828 | rs1050829 | rs5030868 | rs137852328 | rs76723693 | rs2230037
-             * B (wildtype)                   | C         | T         | G         | C           | A          | G
-             * A-202A_376G                    | T         | C         | G         | C           | A          | G
-             * A- 680T_376G                   | C         | C         | G         | A           | A          | G
-             * A-968C_376G                    | C         | C         | G         | C           | G          | G
-             * Mediterranean Haplotype        | C         | T         | A         | C           | A          | A
-             * Sample NA22302-1, Chromosome A | T         | T         | G         |             |            | 
-             * Sample NA22302-1, Chromosome B | T         | T         | A         |             |            | 
-             * Sample NA22302-2, Chromosome A | T         | T         | G         |             |            | 
-             * Sample NA22302-2, Chromosome B | T         | T         | G         |             |            | 
-             *
-             * The "Haplotype ..." header is just for readibility, it isn't actually a row that 
-             * we iterate over.
-             *
-             * Blank allele cells are represented as null's.
-             *
-             * f is a function that accepts 2 arguments:
-             * 1) an instance of Haplotype or NovelHaplotype
-             * 2) an iterable of alleles for the snpIds of this gene
-             *
-             */ 
-
-            def alleles = { variants ->
-                def snpIdToAllele = variants.inject([:]) { m, variant ->
-                    m[variant.snp_id] = variant.allele
-                    m
-                }
-                return snpIds.collect { it in snpIdToAllele ? snpIdToAllele[it] : null }
-            }
-            Row.groupBy(haplotypeVariants, ['haplotype_name']).each { variants ->
-                f(new Haplotype(haplotypeName: variants[0].haplotype_name), alleles(variants))
-            }
-            Row.groupBy(patientVariants, ['patient_id', 'physical_chromosome']).each { variants ->
-                def patientId = variants[0].patient_id
-                f(
-                    new NovelHaplotype(
-                        patientId: variants[0].patient_id,
-                        physicalChromosome: variants[0].physical_chromosome,
-                    ),
-                    alleles(variants),
-                )
-            }
-
-        }
-
-    }
-
-    private static GroovyRowResult nextRow(ResultSet rs) throws SQLException {
-        ResultSetMetaData md = rs.getMetaData();
-        int columns = md.getColumnCount();
-        ArrayList list = new ArrayList(50);
-        HashMap row = new HashMap(columns);
-        for(int i = 1; i <= columns; i++){           
-            row.put(md.getColumnName(i), rs.getObject(i));
-        }
-        return new GroovyRowResult(row);
-    }
-	
-	private static def withConnection(groovy.sql.Sql sql, Closure f) {
-		if (sql.connection == null) {
-			// This Sql instance was created from a DataSource.
-			def connection = sql.dataSource.getConnection()
-			try {
-				f(connection)
-			} finally {
-                // Return the connection to the connection pool.
-				connection.close()
-			}
-		} else {
-			f(sql.connection)
-		}
-	}
-
-    private static def stmtIter(connection, String sqlStr) {
-        def stmt = connection.prepareStatement(sqlStr)
-        ResultSet rs = null
-        return new Object() {
-            def execute(Object... params) {
-                (1..params.size()).each { i ->
-                    stmt.setObject(i, params[i-1])
-                }
-                rs = stmt.executeQuery()
-            }
-            def each(Closure f) {
-                if (rs == null) {
-                    throw new IllegalStateException("Must call execute(params) before next()")
-                }
-                while (rs.next()) {
-                    def row = nextRow(rs)
-                    f(row)
-                }
-                rs.close()
-            }
-        }
     }
 
 }

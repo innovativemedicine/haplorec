@@ -31,7 +31,7 @@ public class Algorithm {
      *     ...,
      * ]
      */
-    static def disambiguateHets(Map kwargs = [:], GeneHaplotypeMatrix geneHaplotypeMatrix, hetVariants) {
+    static def disambiguateHets(GeneHaplotypeMatrix geneHaplotypeMatrix, hetVariants) {
         def sortedHets = hetVariants.sort(false) { [it.snp_id, it.allele] }
         eachN(2, sortedHets) { h1, h2 ->
             if (h1.snp_id != h2.snp_id) {

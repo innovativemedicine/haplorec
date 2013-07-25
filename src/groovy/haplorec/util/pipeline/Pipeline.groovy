@@ -4,11 +4,13 @@ import haplorec.util.Input
 import haplorec.util.Sql
 import haplorec.util.dependency.DependencyGraphBuilder
 import haplorec.util.dependency.Dependency
+import haplorec.util.data.GeneHaplotypeMatrix
 
 public class Pipeline {
     // table alias to SQL table name mapping
     private static def defaultTables = [
         variant                     : 'job_patient_variant',
+        hetVariant                  : 'job_patient_het_variant',
         variantGene                 : '_job_patient_variant_gene',
         variantGeneView             : '_job_patient_variant_gene_view',
         variantGeneHaplotype        : '_job_patient_variant_gene_haplotype',
@@ -16,7 +18,7 @@ public class Pipeline {
         genePhenotype               : 'job_patient_gene_phenotype',
         genotype                    : 'job_patient_genotype',
         geneHaplotype               : 'job_patient_gene_haplotype',
-        novelHaplotype             : 'job_patient_novel_haplotype',
+        novelHaplotype              : 'job_patient_novel_haplotype',
         genotypeDrugRecommendation  : 'job_patient_genotype_drug_recommendation',
         phenotypeDrugRecommendation : 'job_patient_phenotype_drug_recommendation',
         job                         : 'job',
@@ -136,29 +138,216 @@ public class Pipeline {
         // cleanup the helper tables
         cleanup(sql, kwargs.variantGeneHaplotype, kwargs.sqlParams.job_id)
     }
+    
+    private static String _eq(sqlParams) {
+        sqlParams.collect { param -> "${param.key} = :${param.key}" }.join(" and ") 
+    }
 
-    /*
     static def variantToGeneHaplotypeRedo(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
+        def distinctGeneAndPatientSql = { variantsTable -> """\
+            |select distinct gene_name, patient_id
+            |from ${variantsTable}
+            |join gene_haplotype_variant using (snp_id)
+            |where job_id = :job_id
+            |""".stripMargin()
+        }
         // GeneName -> { PatientID }
         def geneToPatientId = Sql.selectAs(sql, """\
-            |select distinct gene_name, patient_id
-            |from ${kwargs.variants}
-            |join gene_haplotype_variant using (gene_name)
-            |where job_id = :job_id
-            |""".stripMargin(),
+            |${distinctGeneAndPatientSql(kwargs.variant)}
+            |union distinct
+            |${distinctGeneAndPatientSql(kwargs.hetVariant)}
+            |""".stripMargin(), null,
             sqlParams: kwargs.sqlParams,
             saveAs: 'rows')
             .inject([:]) { m, row ->
-                m.get(row.gene_name).add(row.patient_id)
+                m.get(row.gene_name, [] as Set).add(row.patient_id)
                 return m
             }
-        geneToPatientId.keySet().each { gene ->
-            def ghm = new GeneHaplotypeMatrix(g)
+        geneToPatientId.keySet().each { geneName ->
+            def unambiguousHaplotypes = []
+            def novelHaplotypes = []
+            GeneHaplotypeMatrix ghm = GeneHaplotypeMatrix.haplotypeMatrix(sql, geneName)
+            geneToPatientId[geneName].each { patientId ->
+                def sqlParams = kwargs.sqlParams + [gene_name: geneName, patient_id: patientId]
+                // physical_chromosome -> [homozygous variants]
+                def homVars = Sql.selectAs(sql, """\
+                    |select *
+                    |from ${kwargs.variant}
+                    |join gene_snp using (snp_id)
+                    |where zygosity = 'hom' and ${_eq(sqlParams)}
+                    |order by physical_chromosome
+                    |""".stripMargin(),
+                    sqlParams: sqlParams, null,
+                    saveAs: 'rows')
+                    .groupBy { it.physical_chromosome }
+                // physical_chromosome -> ( het_combo -> [heterozygous variants] )
+                def hetVariantCombos = Sql.selectAs(sql, """\
+                    |select *
+                    |from ${kwargs.hetVariant}
+                    |join gene_snp using (snp_id)
+                    |where ${_eq(sqlParams)}
+                    |order by het_combo, physical_chromosome
+                    |""".stripMargin(), null,
+                    sqlParams: sqlParams,
+                    saveAs: 'rows')
+                    .inject([:]) { m, row ->
+                        m.get(m[row.physical_chromosome], [:])
+                         .get(m[row.het_combo], [])
+                         .add(row)
+                        return m
+                    }
+                /* TODO: what if there are not hets? what het_combo do we use?
+                 */
+                homVars.each { physicalChromosome, homVariants ->
+                    (
+                        hetVariantCombos.physical_chromosome ?: 
+                        /* There are only homozygous variants; no heterozygous variants.  
+                         * Just use het_combo == null and an empty list for hetVariants.
+                         */
+                        [ ( null ) : [] ]
+                    ).each { hetCombo, hetVariants -> 
+                        def hetCombos = hetVariantCombos.physical_chromosome != null ? hetVariants[0].het_combos : null
+                        /* Find the haplotypes on a particular physical chromosome of a particular 
+                         * heterozygous combination.
+                         */
+                        Set haplotypes = ghm.variantsToHaplotypes(homVariants + hetVariants)
+                        if (haplotypes.size() == 1) {
+                            /* An unambiguous, known haplotype.
+                             */
+                            unambiguousHaplotypes.add([
+                                job_id: sqlParams.job_id,
+                                patient_id: patientId,
+                                physical_chromosome: physicalChromosome,
+                                het_combo: hetCombo,
+                                het_combos: hetCombos,
+                                gene_name: geneName,
+                                haplotype_name: haplotypes.iterator().next(),
+                            ])
+                        } else if (haplotypes.size() == 0) {
+                            /* A novel haplotype.
+                             */
+                            novelHaplotypes.add([
+                                job_id: sqlParams.job_id,
+                                patient_id: patientId,
+                                physical_chromosome: physicalChromosome,
+                                het_combo: hetCombo,
+                                het_combos: hetCombos,
+                                gene_name: geneName,
+                            ])
+                        } else {
+                            /* haplotypes.size() > 0; variants ambiguously identify many haplotypes. 
+                             * Default behaviour (for now) is to ignore these.
+                             */
+                        }
+                    }
+                }
+            }
+            Sql.insert(sql, kwargs.geneHaplotype, null, unambiguousHaplotypes)
+            Sql.insert(sql, kwargs.novelHaplotype, null, novelHaplotypes)
         }
     }
-    */
 
+    /* Run Algorithm.disambiguateHets to populate kwargs.hetVariant, using kwargs.variant as a source of 
+     * variants.
+     */
+    static def variantToHetVariant(Map kwargs = [:], groovy.sql.Sql sql) {
+        /* Pseudocode:
+         *
+         * for each g in "genes with at least one snp_id in this patient's hetVariant snp_ids":
+         *     ghm = GeneHaplotypeMatrix(g)
+         *     for each patient in "patients in this job with at least one hetVariant":
+         *         hets = "het variants for this patient belonging to snp_ids for this gene"
+         *         for (het_combo_type, combos) in disambiguateHets(ghm, hets):
+         *             # het_combo_type is one of:
+         *             # AKnownBKnown => hets make up 2 known haplotypes for this gene
+         *             # AKnownBNovel => hets make up 1 known haplotype and 1 novel haplotype for this gene
+         *             het_combo = 1
+         *             het_combos = combos.size()
+         *             for hets in combos:
+         *                 for h in hets:
+         *                     insert into table.hetVariant 
+         *                         h.snp_id, h.allele, h.physical_chromosome, het_combo, het_combos
+         *                     het_combo += 1
+         */
+        GeneHaplotypeMatrix ghm
+        eachGeneWithPatients(sql,
+            genePatientTuples: Sql.selectAs(sql, """\
+                |select distinct gene_name, patient_id
+                |from ${kwargs.variant}
+                |join gene_haplotype_variant using (snp_id)
+                |where job_id = :job_id
+                |""".stripMargin(), null,
+                sqlParams: kwargs.sqlParams,
+                saveAs: 'rows'),
+            eachGene: { geneName ->
+                ghm = GeneHaplotypeMatrix.haplotypeMatrix(sql, geneName)
+            },
+            eachPatient: { geneName, patientId ->
+                def sqlParams = kwargs.sqlParams + [gene_name: geneName, patient_id: patientId]
+                def combos = disambiguateHets(
+                    ghm, 
+                    Sql.selectAs(sql, """\
+                        |select snp_id, allele
+                        |from ${kwargs.variant}
+                        |join gene_snp using (snp_id)
+                        |where zygosity = 'het' and ${_eq(sqlParams)}
+                        |""".stripMargin(), null,
+                        sqlParams: sqlParams,
+                        saveAs: 'rows')
+                )
+                def columns
+                combos.each { hetComboType, comboOfHets ->
+                    /* Add het_combo and het_combos to each heterzygote variant in (for each 
+                     * possible combinations).
+                     */
+                    int hetCombos = comboOfHets.size()
+                    comboOfHets.eachWithIndex { hets, i -> 
+                        hets.each { h ->
+                            h.het_combo = i + 1 
+                            h.het_combos = hetCombos
+                        }
+                        if (columns == null) {
+                            columns = h.keySet()
+                        }
+                    }
+                }
+                Sql.insert(sql, kwargs.hetVariant, columns, flatten(flatten(combos.values())))
+            },
+            sqlParams: kwargs.sqlParams,
+        )
+    }
+
+    private static def eachGeneWithPatients(Map kwargs = [:], groovy.sql.Sql sql) {
+        // GeneName -> { PatientID }
+        def geneToPatientId = kwargs.genePatientTuples.inject([:]) { m, row ->
+            m.get(row.gene_name, [] as Set).add(row.patient_id)
+            return m
+        }
+        geneToPatientId.keySet().each { geneName ->
+            kwargs.eachGene(geneName)
+            geneToPatientId[geneName].each { patientId ->
+                kwargs.eachPatient(geneName, patientId)
+            }
+        }
+    }
+
+    /* Return an iterator that flattens it's iterables by 1 level. 
+     * Examples:
+     *
+     * flatten([[1, 2], [3, 4]])                                    == [1, 2, 3, 4]
+     * flatten(        [ [ [1, 2], [3, 4] ], [ [5, 6], [7, 8] ] ])  == [ [1, 2], [3, 4], [5, 6], [7, 8] ]
+     * flatten(flatten([ [ [1, 2], [3, 4] ], [ [5, 6], [7, 8] ] ])) == [ 1, 2, 3, 4, 5, 6, 7, 8 ]
+     */
+    static def flatten(iterables) {
+        return new Object() {
+            def each(Closure f) {
+                iterables.each { iter ->
+                    iter.each(f)
+                }
+            }
+        }
+    }
 
     static private def cleanup(groovy.sql.Sql sql, table, jobId) {
         sql.execute "delete from $table where job_id = :job_id".toString(), [job_id: jobId]
@@ -287,6 +476,11 @@ public class Pipeline {
         cleanup(sql, kwargs.variantGene, kwargs.sqlParams.job_id)
     }
 
+    static def geneHaplotypeToNovelHaplotypeRedo(Map kwargs = [:], groovy.sql.Sql sql) {
+        /* Do nothing, since it's already been done in variantToGeneHaplotypeRedo.
+         */
+    }
+
     static def genotypeToGenotypeDrugRecommendation(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
         return Sql.selectWhereSetContains(
@@ -343,10 +537,15 @@ public class Pipeline {
                 name: "Haplotypes",
                 table: tbl.geneHaplotype,
                 fileUpload: canUpload('geneHaplotype')) {
-                    dependencies.variant = dependency(id: 'variant', target: 'variant', 
-                    name: "Variants",
-                    table: tbl.variant,
-                    fileUpload: canUpload('variant'))
+                    dependencies.hetVariant = dependency(id: 'hetVariant', target: 'hetVariant', 
+                    name: "Heterozygous Variant Combinations",
+                    table: tbl.hetVariant,
+                    fileUpload: canUpload('hetVariant')) {
+                        dependencies.variant = dependency(id: 'variant', target: 'variant', 
+                        name: "Variants",
+                        table: tbl.variant,
+                        fileUpload: canUpload('variant'))
+                    }
                 }
             }
         }
@@ -444,10 +643,13 @@ public class Pipeline {
             geneHaplotypeToGenotype(pipelineKwargs, sql)
         }
         dependencies.geneHaplotype.rule = { ->
-            variantToGeneHaplotype(pipelineKwargs, sql)
+            variantToGeneHaplotypeRedo(pipelineKwargs, sql)
+        }
+        dependencies.hetVariant.rule = { ->
+            variantToHetVariant(pipelineKwargs, sql)
         }
         dependencies.novelHaplotype.rule = { ->
-            geneHaplotypeToNovelHaplotype(pipelineKwargs, sql)
+            geneHaplotypeToNovelHaplotypeRedo(pipelineKwargs, sql)
         }
         dependencies.variant.rule = { ->
             if (kwargs.containsKey('variants')) {
@@ -485,6 +687,10 @@ public class Pipeline {
 
     static def buildAll(job) {
         Set<Dependency> built = []
+        buildAll(job, built)
+    }
+
+    static def buildAll(job, built) {
         job.novelHaplotype.build(built)
         job.phenotypeDrugRecommendation.build(built)
         job.genotypeDrugRecommendation.build(built)

@@ -395,3 +395,9 @@ run aaron's PGX file
     chromsome
 
 - add het_combo / het_combos to all job_patient tables
+- bug: job_patient_het_variant isn't getting filled
+  - add new target in graph for it ( and stage in the pipeline )
+- bug: when we add het_combo / het_combos to tables, it messes up populating various tables from 
+  input files; probably just disable populating from anywhere except variant
+- bug: PipelineLoadTest.testGeneHaplotype is wrong (it should only build kwargs.variant, then build 
+  everyone else in the pipeline)

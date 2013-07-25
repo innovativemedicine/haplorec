@@ -48,6 +48,8 @@ class Row {
         }
     }
 
+    /* Assumes iter is ordered by its groups.
+     */
     static def groupBy(iter, groups) {
         return new Object() {
             def each(Closure f) {

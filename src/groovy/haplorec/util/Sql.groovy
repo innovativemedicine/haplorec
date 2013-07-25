@@ -296,7 +296,7 @@ class Sql {
 	}
 	
     private static def engines = ['MEMORY', 'MyISAM', 'InnoDB']
-    private static def validSaveAs = engines + ['query', 'existing', 'rows']
+    private static def validSaveAs = engines + ['query', 'existing', 'rows', 'iterator']
     private static def selectAs(Map kwargs = [:], groovy.sql.Sql sql, query, columns) {
         setDefaultKwargs(kwargs)
         if (engines.any { kwargs.saveAs == it }) {
@@ -313,6 +313,16 @@ class Sql {
             _sql kwargs, sql.&execute, qInsertInto
         } else if (kwargs.saveAs == 'rows') {
             _sql kwargs, sql.&rows, query
+        } else if (kwargs.saveAs == 'iterator') {
+            return new Object() {
+                def each(Closure f) {
+                    if (kwargs.sqlParams != null) {
+                        sql.eachRow(query, kwargs.sqlParams, f)
+                    } else {
+                        sql.eachRow(query, f)
+                    }
+                }
+            }
         } else {
             throw new IllegalArgumentException("Unknown saveAs type for outputting SQL results; saveAs was ${kwargs.saveAs} but must be one of " + validSaveAs.join(', '))
         }
@@ -328,6 +338,9 @@ class Sql {
                 return
             }
             rowSize = rows[0].size()
+            if (columns == null && rows[0] instanceof LinkedHashMap) {
+                columns = rows[0].keySet()
+            }
         } else {
             rowSize = columns.size()
         }
@@ -339,15 +352,17 @@ class Sql {
                 infile.withPrintWriter() { w ->
                     rows.each { row ->
                         // TOOD: handle quoting
-                        w.println(row.collect { column ->
-                            if (column == null) {
-                                // We need to use \N in the data file to represent a NULL value in mysql
-                                // http://stackoverflow.com/questions/2675323/mysql-load-null-values-from-csv-data
-                                '\\N'
-                            } else {
-                                column
-                            }
-                        }.join('\t'))
+                        w.println(
+                            (row instanceof LinkedHashMap ? row.values() : row).collect { column ->
+                                if (column == null) {
+                                    // We need to use \N in the data file to represent a NULL value in mysql
+                                    // http://stackoverflow.com/questions/2675323/mysql-load-null-values-from-csv-data
+                                    '\\N'
+                                } else {
+                                    column
+                                }
+                            }.join('\t')
+                        )
                     }
                 }
                 sql.execute "load data local infile :infile into table ${table}${(columns.size() > 0) ? "(${columns.join(', ')})" : ''}", [infile: infile.absolutePath]

@@ -99,12 +99,14 @@ public class PipelineLoadTest extends DBTest {
        def samples = 379 // genes 
        // actual is 22
        def variantsPerSample = variantsPerHaplotype // variants / samples
-       def job = Pipeline.pipelineJob(sql, variants: generateVariants(variantsPerSample, samples))
+       def (_, job) = Pipeline.pipelineJob(sql, variants: generateVariants(variantsPerSample, samples))
        Set<Dependency> built = []
-       buildDependencies(job, 'geneHaplotype', built)
+       // buildDependencies(job, 'geneHaplotype', built)
+       job.variant.build(built)
        
        withSlowQueryLog(sql) {
            shouldRunWithin(minutes: 5) {
+               Pipeline.buildAll(job)
                job.geneHaplotype.build(built)
            }
        }

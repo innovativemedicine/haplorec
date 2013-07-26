@@ -31,6 +31,52 @@ class AlgorithmTest extends GroovyTestCase {
         matrix = new GeneHaplotypeMatrix(geneName: geneName, snpIds: snpIds, haplotypeVariants: haplotypeVariants)
     }
 
+    void testDisambiguateHetsEmpty() {
+        /* Trivial case of an empty list of input variants.
+         */
+        disambiguateHetsTest(
+            [],
+            [
+                AKnownBKnown: [
+                ],
+                AKnownBNovel: [
+                ],
+            ],
+        )
+    }
+
+    void testDisambiguateHets1Het() {
+        /* Test that in the special case of 1 heterzygote SNP rs1050828 CT, we get
+         * chromosome A:
+         * rs1050828 C
+         * chromosome B:
+         * rs1050828 T
+         */
+        disambiguateHetsTest(
+            generatePatientVariants(
+                ['patient1'],
+                [
+                    het: [
+                        rs1050828: 'CT',
+                    ],
+                ],
+            ),
+            generateExpected(
+                ['rs1050828'],
+                [
+                    AKnownBKnown: [
+                        [
+                            ['C'],
+                            ['T'],
+                        ],
+                    ],
+                    AKnownBNovel: [
+                    ],
+                ]
+            ),
+        )
+    }
+
     void testDisambiguateHets3Snps2KnownHaplotypes() {
         /* Test that we can disambiguate 'Mediterranean Haplotype' / 'B (wildtype)'.
          * Given:

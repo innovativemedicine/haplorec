@@ -6,6 +6,8 @@ import haplorec.util.dependency.DependencyGraphBuilder
 import haplorec.util.dependency.Dependency
 import haplorec.util.data.GeneHaplotypeMatrix
 
+import haplorec.util.pipeline.Algorithm
+
 public class Pipeline {
     // table alias to SQL table name mapping
     private static def defaultTables = [
@@ -145,30 +147,45 @@ public class Pipeline {
 
     static def variantToGeneHaplotypeRedo(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
-        def distinctGeneAndPatientSql = { variantsTable -> """\
+        def distinctGeneAndPatientSql = { variantsTable -> 
+            /* Select all (gene_name, patient_id) tuples where there exists at least one variant for 
+             * that gene for that patient.
+             *
+             * Note that physical_chromosome is not null is used to filter out lines from the variant 
+             * file input where a SNP is listed, but no allele is present.
+             */
+            """\
             |select distinct gene_name, patient_id
             |from ${variantsTable}
             |join gene_haplotype_variant using (snp_id)
-            |where job_id = :job_id
+            |where physical_chromosome is not null and job_id = :job_id
             |""".stripMargin()
         }
-        // GeneName -> { PatientID }
-        def geneToPatientId = Sql.selectAs(sql, """\
-            |${distinctGeneAndPatientSql(kwargs.variant)}
-            |union distinct
-            |${distinctGeneAndPatientSql(kwargs.hetVariant)}
-            |""".stripMargin(), null,
-            sqlParams: kwargs.sqlParams,
-            saveAs: 'rows')
-            .inject([:]) { m, row ->
-                m.get(row.gene_name, [] as Set).add(row.patient_id)
-                return m
-            }
-        geneToPatientId.keySet().each { geneName ->
-            def unambiguousHaplotypes = []
-            def novelHaplotypes = []
-            GeneHaplotypeMatrix ghm = GeneHaplotypeMatrix.haplotypeMatrix(sql, geneName)
-            geneToPatientId[geneName].each { patientId ->
+        GeneHaplotypeMatrix ghm
+        def unambiguousHaplotypes = []
+        def novelHaplotypes = []
+        def insertRows = { ->
+            Sql.insert(sql, kwargs.geneHaplotype, null, unambiguousHaplotypes)
+            Sql.insert(sql, kwargs.novelHaplotype, null, novelHaplotypes)
+        }
+        eachGeneWithPatients(sql,
+            genePatientTuples: Sql.selectAs(sql, """\
+                |${distinctGeneAndPatientSql(kwargs.variant)}
+                |union distinct
+                |${distinctGeneAndPatientSql(kwargs.hetVariant)}
+                |""".stripMargin(), null,
+                sqlParams: kwargs.sqlParams,
+                saveAs: 'rows'),
+            eachGene: { geneName ->
+                /* Insert rows generated from the last geneName (this will do nothing for the first 
+                 * iteration).
+                 */
+                insertRows()
+                ghm = GeneHaplotypeMatrix.haplotypeMatrix(sql, geneName)
+                unambiguousHaplotypes = []
+                novelHaplotypes = []
+            },
+            eachPatient: { geneName, patientId ->
                 def sqlParams = kwargs.sqlParams + [gene_name: geneName, patient_id: patientId]
                 // physical_chromosome -> [homozygous variants]
                 def homVars = Sql.selectAs(sql, """\
@@ -192,22 +209,21 @@ public class Pipeline {
                     sqlParams: sqlParams,
                     saveAs: 'rows')
                     .inject([:]) { m, row ->
-                        m.get(m[row.physical_chromosome], [:])
-                         .get(m[row.het_combo], [])
+                        m.get(row.physical_chromosome, [:])
+                         .get(row.het_combo, [])
                          .add(row)
                         return m
                     }
-                /* TODO: what if there are not hets? what het_combo do we use?
-                 */
-                homVars.each { physicalChromosome, homVariants ->
+                ['A', 'B'].each { physicalChromosome -> 
+                    def homVariants = homVars.get(physicalChromosome, [])
                     (
-                        hetVariantCombos.physical_chromosome ?: 
+                        hetVariantCombos[physicalChromosome] ?: 
                         /* There are only homozygous variants; no heterozygous variants.  
                          * Just use het_combo == null and an empty list for hetVariants.
                          */
                         [ ( null ) : [] ]
                     ).each { hetCombo, hetVariants -> 
-                        def hetCombos = hetVariantCombos.physical_chromosome != null ? hetVariants[0].het_combos : null
+                        def hetCombos = hetVariantCombos[physicalChromosome] != null ? hetVariants[0].het_combos : null
                         /* Find the haplotypes on a particular physical chromosome of a particular 
                          * heterozygous combination.
                          */
@@ -242,10 +258,12 @@ public class Pipeline {
                         }
                     }
                 }
-            }
-            Sql.insert(sql, kwargs.geneHaplotype, null, unambiguousHaplotypes)
-            Sql.insert(sql, kwargs.novelHaplotype, null, novelHaplotypes)
-        }
+            },
+            sqlParams: kwargs.sqlParams,
+        )
+        /* Insert rows generated from the final geneName.
+         */
+        insertRows()
     }
 
     /* Run Algorithm.disambiguateHets to populate kwargs.hetVariant, using kwargs.variant as a source of 
@@ -276,7 +294,7 @@ public class Pipeline {
                 |select distinct gene_name, patient_id
                 |from ${kwargs.variant}
                 |join gene_haplotype_variant using (snp_id)
-                |where job_id = :job_id
+                |where zygosity = 'het' and job_id = :job_id
                 |""".stripMargin(), null,
                 sqlParams: kwargs.sqlParams,
                 saveAs: 'rows'),
@@ -285,7 +303,7 @@ public class Pipeline {
             },
             eachPatient: { geneName, patientId ->
                 def sqlParams = kwargs.sqlParams + [gene_name: geneName, patient_id: patientId]
-                def combos = disambiguateHets(
+                def combos = Algorithm.disambiguateHets(
                     ghm, 
                     Sql.selectAs(sql, """\
                         |select snp_id, allele
@@ -298,21 +316,27 @@ public class Pipeline {
                 )
                 def columns
                 combos.each { hetComboType, comboOfHets ->
-                    /* Add het_combo and het_combos to each heterzygote variant in (for each 
-                     * possible combinations).
+                    /* Add het_combo and het_combos to each heterzygote variant before insertion 
+                     * into hetVariant (for each possible combination).
                      */
                     int hetCombos = comboOfHets.size()
                     comboOfHets.eachWithIndex { hets, i -> 
                         hets.each { h ->
                             h.het_combo = i + 1 
                             h.het_combos = hetCombos
-                        }
-                        if (columns == null) {
-                            columns = h.keySet()
+                            h.job_id = kwargs.sqlParams.job_id
+                            h.patient_id = patientId
+							if (columns == null) {
+								columns = h.keySet()
+							}
                         }
                     }
                 }
-                Sql.insert(sql, kwargs.hetVariant, columns, flatten(flatten(combos.values())))
+				if (columns != null) {
+					/* There's at least one hetVariant to insert.
+					 */
+					Sql.insert(sql, kwargs.hetVariant, columns, flatten(flatten(combos.values())))
+				}
             },
             sqlParams: kwargs.sqlParams,
         )

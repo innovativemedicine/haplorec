@@ -44,7 +44,8 @@ public class PipelineTest extends DBTest {
             job_patient_genotype                      : ['job_id', 'patient_id', 'gene_name', 'haplotype_name1', 'haplotype_name2'],
             job_patient_gene_phenotype                : ['job_id', 'patient_id', 'gene_name', 'phenotype_name'],
             job_patient_variant                       : ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'zygosity'],
-            job_patient_novel_haplotype              : ['job_id', 'patient_id', 'gene_name', 'physical_chromosome'],
+            job_patient_het_variant                   : ['job_id', 'patient_id', 'physical_chromosome', 'het_combo', 'het_combos', 'snp_id', 'allele'],
+            job_patient_novel_haplotype               : ['job_id', 'patient_id', 'gene_name', 'physical_chromosome'],
         ]
     }
 
@@ -128,28 +129,67 @@ public class PipelineTest extends DBTest {
          */
         drugRecommendationsTest(
 			variants: [
-                ['patient1', 'chr1A', 'rs1', 'A', 'hom'],
-                ['patient1', 'chr1B', 'rs1', 'A', 'hom'],
-                ['patient1', 'chr1A', 'rs2', 'G', 'hom'],
-                ['patient1', 'chr1B', 'rs2', 'G', 'hom'],
+                ['patient1', 'A', 'rs1', 'A', 'hom'],
+                ['patient1', 'B', 'rs1', 'A', 'hom'],
+                ['patient1', 'A', 'rs2', 'G', 'hom'],
+                ['patient1', 'B', 'rs2', 'G', 'hom'],
 
                 // patient2 has 1 heterozygote snp_id used in snp->haplotype mappings for g1, so we can still use it
-                ['patient2', 'chr1A', 'rs1', 'A', 'het'],
-                ['patient2', 'chr1B', 'rs1', 'G', 'het'],
-                ['patient2', 'chr1A', 'rs2', 'G', 'hom'],
-                ['patient2', 'chr1B', 'rs2', 'G', 'hom'],
+                ['patient2', 'A', 'rs1', 'A', 'het'],
+                ['patient2', 'B', 'rs1', 'G', 'het'],
+                ['patient2', 'A', 'rs2', 'G', 'hom'],
+                ['patient2', 'B', 'rs2', 'G', 'hom'],
 
                 // patient2 has 2 heterozygote snp_id's used in snp->haplotype mappings for g1, so we can't use it
-                ['patient3', 'chr1A', 'rs1', 'A', 'het'],
-                ['patient3', 'chr1B', 'rs1', 'G', 'het'],
-                ['patient3', 'chr1A', 'rs2', 'A', 'het'],
-                ['patient3', 'chr1B', 'rs2', 'G', 'het'],
+                ['patient3', 'A', 'rs1', 'A', 'het'],
+                ['patient3', 'B', 'rs1', 'G', 'het'],
+                ['patient3', 'A', 'rs2', 'A', 'het'],
+                ['patient3', 'B', 'rs2', 'G', 'het'],
 			])
+		assertJobTable('job_patient_het_variant', [
+            /* For patient2:
+             * There's only 1 het so its trivial to choose rs1 A on chromosome A and rs1 G on chromosome 
+             * B.
+             */
+            [1, 'patient2', 'A', 1, 1, 'rs1', 'A'],
+            [1, 'patient2', 'B', 1, 1, 'rs1', 'G'],
+
+            /* For patient3: 
+             * We shouldn't be able to disambiguate on which physical chromosome het 
+             * variants occur, since it could be:
+             * 
+             * chromosome A:
+             * rs1 A, rs2 A => *5
+             * chromosome B:
+             * rs1 G, rs2 G => *3
+             *
+             * OR
+             *
+             * chromosome A:
+             * rs1 A, rs2 G => *1
+             * chromosome B:
+             * rs1 G, rs2 A => *4
+             *
+             */
+            [1, 'patient3', 'A', 1, 2, 'rs1', 'A'],
+            [1, 'patient3', 'A', 1, 2, 'rs2', 'A'],
+            [1, 'patient3', 'B', 1, 2, 'rs1', 'G'],
+            [1, 'patient3', 'B', 1, 2, 'rs2', 'G'],
+            // OR
+            [1, 'patient3', 'A', 2, 2, 'rs1', 'A'],
+            [1, 'patient3', 'A', 2, 2, 'rs2', 'G'],
+            [1, 'patient3', 'B', 2, 2, 'rs1', 'G'],
+            [1, 'patient3', 'B', 2, 2, 'rs2', 'A'],
+		])
 		assertJobTable('job_patient_gene_haplotype', [
 			[1, 'patient2', 'g1', '*1'],
 			[1, 'patient2', 'g1', '*3'],
             [1, 'patient1', 'g1', '*1'],
 			[1, 'patient1', 'g1', '*1'],
+			[1, 'patient3', 'g1', '*3'],
+			[1, 'patient3', 'g1', '*5'],
+			[1, 'patient3', 'g1', '*1'],
+			[1, 'patient3', 'g1', '*4'],
 		])
 		assertJobTable('job_patient_genotype', [
 			[1, 'patient2', 'g1', '*1', '*3'],
@@ -252,10 +292,10 @@ public class PipelineTest extends DBTest {
 		drugRecommendationsTest(
 			variants: [
 				// TODO: i think select disinct is messing up selectWhereEitherSetContains for this testcase; figure out how to work around that
-				['patient1', 'chr1A', 'rs1', 'A', 'hom'],
-				['patient1', 'chr1A', 'rs2', 'G', 'hom'],
-				['patient1', 'chr1B', 'rs1', 'A', 'hom'],
-				['patient1', 'chr1B', 'rs2', 'G', 'hom'],
+				['patient1', 'A', 'rs1', 'A', 'hom'],
+				['patient1', 'A', 'rs2', 'G', 'hom'],
+				['patient1', 'B', 'rs1', 'A', 'hom'],
+				['patient1', 'B', 'rs2', 'G', 'hom'],
 			])
 		assertJobTable('job_patient_gene_haplotype', [
 			[1, 'patient1', 'g1', '*1'],
@@ -277,15 +317,15 @@ public class PipelineTest extends DBTest {
          */
         drugRecommendationsTest(
 			variants: [
-				['patient2', 'chr1A', 'rs1', 'A', 'hom'],
-				['patient2', 'chr1A', 'rs2', 'G', 'hom'],
-				['patient2', 'chr1B', 'rs1', 'A', 'hom'],
-				['patient2', 'chr1B', 'rs2', 'G', 'hom'],
+				['patient2', 'A', 'rs1', 'A', 'hom'],
+				['patient2', 'A', 'rs2', 'G', 'hom'],
+				['patient2', 'B', 'rs1', 'A', 'hom'],
+				['patient2', 'B', 'rs2', 'G', 'hom'],
                 // from last test's job 1
-				['patient1', 'chr1A', 'rs1', 'A', 'hom'],
-				['patient1', 'chr1A', 'rs2', 'G', 'hom'],
-				['patient1', 'chr1B', 'rs1', 'A', 'hom'],
-				['patient1', 'chr1B', 'rs2', 'G', 'hom'],
+				['patient1', 'A', 'rs1', 'A', 'hom'],
+				['patient1', 'A', 'rs2', 'G', 'hom'],
+				['patient1', 'B', 'rs1', 'A', 'hom'],
+				['patient1', 'B', 'rs2', 'G', 'hom'],
 			])
 		assertJobTable('job_patient_gene_haplotype', [
 			[2, 'patient2', 'g1', '*1'],
@@ -349,8 +389,8 @@ public class PipelineTest extends DBTest {
 
         drugRecommendationsTest(
             variants: [
-                ['patient1', 'chr1A', 'rs1', 'A', 'hom'],
-                ['patient1', 'chr1B', 'rs1', 'A', 'hom'],
+                ['patient1', 'A', 'rs1', 'A', 'hom'],
+                ['patient1', 'B', 'rs1', 'A', 'hom'],
             ])
         assertJobTable('job_patient_gene_haplotype', [
             [1, 'patient1', 'g1', '*1'],
@@ -486,8 +526,8 @@ public class PipelineTest extends DBTest {
 
         drugRecommendationsTest(
             variants: [
-                ['patient1', 'chr1A', 'rs1', 'A', 'hom'],
-                ['patient1', 'chr1B', 'rs1', 'A', 'hom'],
+                ['patient1', 'A', 'rs1', 'A', 'hom'],
+                ['patient1', 'B', 'rs1', 'A', 'hom'],
             ])
         assertJobTable('job_patient_gene_haplotype', [
             [1, 'patient1', 'g1', '*1'],
@@ -511,10 +551,10 @@ public class PipelineTest extends DBTest {
 
         drugRecommendationsTest(
             variants: [
-                ['patient1', 'chr1A', 'rs1', 'A', 'hom'],
-                ['patient1', 'chr1B', 'rs1', 'A', 'hom'],
-                ['patient1', 'chr1A', 'rs3', 'A', 'hom'],
-                ['patient1', 'chr1B', 'rs3', 'A', 'hom'],
+                ['patient1', 'A', 'rs1', 'A', 'hom'],
+                ['patient1', 'B', 'rs1', 'A', 'hom'],
+                ['patient1', 'A', 'rs3', 'A', 'hom'],
+                ['patient1', 'B', 'rs3', 'A', 'hom'],
             ])
         assertJobTable('job_patient_gene_haplotype', [
             [1, 'patient1', 'g1', '*1'],
@@ -524,7 +564,7 @@ public class PipelineTest extends DBTest {
 	}
 
     void testNovelHaplotypes() {
-        /* Test that haplotypes where we have a strict subset of snp_id's, but some unqiue alleles are ignored.
+        /* Test that haplotypes where we have a strict subset of snp_id's, but some unique alleles are ignored.
          * TODO: ideally we should report novel haplotypes, probably by adding a new node in the graph.
          */
         def sampleData = [
@@ -537,13 +577,17 @@ public class PipelineTest extends DBTest {
 
         drugRecommendationsTest(
             variants: [
-                ['patient1', 'chr1A', 'rs1', 'A', 'hom'],
-                ['patient1', 'chr1B', 'rs1', 'A', 'hom'],
-                ['patient1', 'chr1A', 'rs2', 'T', 'hom'],
-                ['patient1', 'chr1B', 'rs2', 'T', 'hom'],
+                ['patient1', 'A', 'rs1', 'A', 'hom'],
+                ['patient1', 'B', 'rs1', 'A', 'hom'],
+                ['patient1', 'A', 'rs2', 'T', 'hom'],
+                ['patient1', 'B', 'rs2', 'T', 'hom'],
             ])
         assertJobTable('job_patient_gene_haplotype', [
             // should be empty
+        ])
+        assertJobTable('job_patient_novel_haplotype', [
+            [1, 'patient1', 'g1', 'A'],
+            [1, 'patient1', 'g1', 'B'],
         ])
     }
 
@@ -563,8 +607,8 @@ public class PipelineTest extends DBTest {
 
         drugRecommendationsTest(
             variants: [
-                ['patient1', 'chr1A', 'rs1', 'A', 'hom'],
-                ['patient1', 'chr1B', 'rs1', 'A', 'hom'],
+                ['patient1', 'A', 'rs1', 'A', 'hom'],
+                ['patient1', 'B', 'rs1', 'A', 'hom'],
             ])
         assertJobTable('job_patient_gene_haplotype', [
             // should be empty
@@ -729,17 +773,17 @@ public class PipelineTest extends DBTest {
 
 		drugRecommendationsTest(
 			variants: [
-                ['patient1', 'chr1A', 'rs1', 'T', 'hom'],
-                ['patient1', 'chr1B', 'rs1', 'T', 'hom'],
-                ['patient1', 'chr1A', 'rs2', 'G', 'hom'],
-                ['patient1', 'chr1B', 'rs2', 'G', 'hom'],
-                ['patient1', 'chr1A', 'rs3', 'C', 'hom'],
-                ['patient1', 'chr1B', 'rs3', 'C', 'hom'],
+                ['patient1', 'A', 'rs1', 'T', 'hom'],
+                ['patient1', 'B', 'rs1', 'T', 'hom'],
+                ['patient1', 'A', 'rs2', 'G', 'hom'],
+                ['patient1', 'B', 'rs2', 'G', 'hom'],
+                ['patient1', 'A', 'rs3', 'C', 'hom'],
+                ['patient1', 'B', 'rs3', 'C', 'hom'],
             ])
         assertJobTable('job_patient_gene_haplotype', [])
         assertJobTable('job_patient_novel_haplotype', [
-            [1, 'patient1', 'g1', 'chr1A'],
-            [1, 'patient1', 'g1', 'chr1B'],
+            [1, 'patient1', 'g1', 'A'],
+            [1, 'patient1', 'g1', 'B'],
         ])
     }
 	
@@ -761,17 +805,17 @@ public class PipelineTest extends DBTest {
 
 		drugRecommendationsTest(
 			variants: [
-				['patient1', 'chr1A', 'rs1', 'T', 'hom'],
-				['patient1', 'chr1B', 'rs1', 'T', 'hom'],
-				['patient1', 'chr1A', 'rs2', 'C', 'hom'],
-				['patient1', 'chr1B', 'rs2', 'C', 'hom'],
-				['patient1', 'chr1A', 'rs3', 'T', 'hom'],
-				['patient1', 'chr1B', 'rs3', 'T', 'hom'],
+				['patient1', 'A', 'rs1', 'T', 'hom'],
+				['patient1', 'B', 'rs1', 'T', 'hom'],
+				['patient1', 'A', 'rs2', 'C', 'hom'],
+				['patient1', 'B', 'rs2', 'C', 'hom'],
+				['patient1', 'A', 'rs3', 'T', 'hom'],
+				['patient1', 'B', 'rs3', 'T', 'hom'],
 			])
 		assertJobTable('job_patient_gene_haplotype', [])
 		assertJobTable('job_patient_novel_haplotype', [
-			[1, 'patient1', 'g1', 'chr1A'],
-			[1, 'patient1', 'g1', 'chr1B'],
+			[1, 'patient1', 'g1', 'A'],
+			[1, 'patient1', 'g1', 'B'],
 		])
 	}
 	
@@ -793,13 +837,13 @@ public class PipelineTest extends DBTest {
 
 		drugRecommendationsTest(
 			variants: [
-				['patient1', 'chr1A', 'rs1', 'G', 'hom'],
-				['patient1', 'chr1B', 'rs1', 'G', 'hom'],
+				['patient1', 'A', 'rs1', 'G', 'hom'],
+				['patient1', 'B', 'rs1', 'G', 'hom'],
 			])
 		assertJobTable('job_patient_gene_haplotype', [])
 		assertJobTable('job_patient_novel_haplotype', [
-			[1, 'patient1', 'g1', 'chr1A'],
-			[1, 'patient1', 'g1', 'chr1B'],
+			[1, 'patient1', 'g1', 'A'],
+			[1, 'patient1', 'g1', 'B'],
 		])
 	}
 	
@@ -821,15 +865,15 @@ public class PipelineTest extends DBTest {
 
 		drugRecommendationsTest(
 			variants: [
-                ['patient1', 'chr1A', 'rs1', 'T', 'hom'],
-                ['patient1', 'chr1B', 'rs1', 'T', 'hom'],
-                ['patient1', 'chr1A', 'rs2', 'G', 'hom'],
-                ['patient1', 'chr1B', 'rs2', 'G', 'hom'],
+                ['patient1', 'A', 'rs1', 'T', 'hom'],
+                ['patient1', 'B', 'rs1', 'T', 'hom'],
+                ['patient1', 'A', 'rs2', 'G', 'hom'],
+                ['patient1', 'B', 'rs2', 'G', 'hom'],
 			])
 		assertJobTable('job_patient_gene_haplotype', [])
 		assertJobTable('job_patient_novel_haplotype', [
-			[1, 'patient1', 'g1', 'chr1A'],
-			[1, 'patient1', 'g1', 'chr1B'],
+			[1, 'patient1', 'g1', 'A'],
+			[1, 'patient1', 'g1', 'B'],
 		])
 	}
 	
@@ -850,8 +894,8 @@ public class PipelineTest extends DBTest {
 
 		drugRecommendationsTest(
 			variants: [
-				['patient1', 'chr1A', 'rs3', 'C', 'hom'],
-				['patient1', 'chr1B', 'rs3', 'C', 'hom'],
+				['patient1', 'A', 'rs3', 'C', 'hom'],
+				['patient1', 'B', 'rs3', 'C', 'hom'],
 			])
 		assertJobTable('job_patient_gene_haplotype', [])
 		assertJobTable('job_patient_novel_haplotype', [])
@@ -859,7 +903,7 @@ public class PipelineTest extends DBTest {
 
 	void testNoNovelHaplotypeEmptyAllele() {
         /* Test for the absence of any novel haplotypes when the input variants have a snp for a 
-         * gene, but with physical chromsome, allele, and zygosity null (this is how variants with 
+         * gene, but with physical_chromsome, allele, and zygosity null (this is how variants with 
          * '' for allele are stored in job_patient_variant).
          */
 		def sampleData = [
@@ -882,5 +926,24 @@ public class PipelineTest extends DBTest {
 		assertJobTable('job_patient_gene_haplotype', [])
 		assertJobTable('job_patient_novel_haplotype', [])
     }
+
+    /* testDisambiguateHets* - test different behaviours related to the disambiguation of 
+     * heterozygote variants.
+     */
+
+    // void testDisambiguateHetsSingleCombination() {
+    //     /* Test inputs where there is only one heterozygous combination (het_combos == 1).
+    //      * 1) 2 known haplotypes                     (patient1)  
+    //      * 2) 1 known, 1 novel                       (patient2)  
+    //      * 3) 2 known haplotypes OR 1 known, 1 novel (patient3)  
+    //      */
+	// 	drugRecommendationsTest(
+	// 		variants: [
+	// 			['patient1', null, 'rs1', null, null],
+	// 			['patient1', null, 'rs1', null, null],
+	// 		])
+	// 	assertJobTable('job_patient_gene_haplotype', [])
+	// 	assertJobTable('job_patient_novel_haplotype', [])
+    // }
 
 }

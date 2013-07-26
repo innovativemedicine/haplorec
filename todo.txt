@@ -395,9 +395,34 @@ run aaron's PGX file
     chromsome
 
 - add het_combo / het_combos to all job_patient tables
-- bug: job_patient_het_variant isn't getting filled
-  - add new target in graph for it ( and stage in the pipeline )
 - bug: when we add het_combo / het_combos to tables, it messes up populating various tables from 
   input files; probably just disable populating from anywhere except variant
-- bug: PipelineLoadTest.testGeneHaplotype is wrong (it should only build kwargs.variant, then build 
-  everyone else in the pipeline)
+
+- bug: selectWhereSetContains needs to group by het_combo
+- bug: PipelineTest's need to add het_combo / het_combos to relavent tables
+  - variantsToHaplotypes should never get an empty list of variants
+- make old tests incorporate het_combo / het_combos
+- create new tests to test new behaviour:
+  - disambiguation of heterozygote variants
+    - 1 het
+      - 2 known haplotypes
+      - 1 known, 1 novel
+    - > 1 het
+      - 2 known haplotypes, 1 combination
+      - 2 known haplotypes, 2 combinations
+      - 1 known, 1 novel, 1 combination
+      - 1 known, 1 novel, 2 combinations
+      - 2 known haplotypes OR 1 known 1 novel, 1 combination each
+      - 2 known haplotypes, 2 combinations OR 1 known 1 novel, 1 combination
+      - 2 novel
+      - 1 known, 1 novel OR 2 novel
+  - test inside Pipeline 
+    - 1 het
+      - 2 known haplotypes
+      - 1 known, 1 novel
+    - > 1 het
+      - 2 known haplotypes, 1 combination
+      - 1 known, 1 novel, 1 combination
+      - 2 known haplotypes, 2 combinations
+      - 1 known, 1 novel, 2 combinations
+      - 2 known haplotypes OR 1 known 1 novel, 1 combination each

@@ -2,47 +2,114 @@ package haplorec.util.pipeline
 
 import haplorec.util.data.GeneHaplotypeMatrix
 
+/* Algorithm's used in haplorec, from various stages.  
+ *
+ * The main point of this file to leave out any sql dependencies, making for faster and easier testing.
+ */
 public class Algorithm {
 
-    static def eachN(int n, iter, Closure f) {
-        def xs = [] 
-        iter.each { x ->
-            xs.add(x)
-            if (xs.size() == n) {
-                f(*xs)
-                xs = []
-            }
-        }
-        if (xs != []) {
-            /* Fill the rest with nulls.
-             */ 
-            def ys = xs + ([null] * ( n - xs.size() ))
-            f(*ys)
-        }
-    }
-
-    /* Given a gene-haplotype matrix for a gene, and heterzygous variants belonging to SNPs of that gene, disambiguate on 
-     * which physical chromosome the heterzygote SNPs occur.
-     * hetVariants: [
-     *     [snpId: rs1, allele: A],
-     *     [snpId: rs1, allele: T],
-     *     [snpId: rs2, allele: A],
-     *     [snpId: rs2, allele: C],
-     *     ...,
+    /* Given a gene-haplotype matrix for a gene, and heterozygous variants belonging to SNPs of that 
+     * gene, disambiguate on which physical chromosome the heterozygote SNPs occur.  
+     *
+     * This is done by looking for existing haplotypes whose alleles are in the heterozygote calls, 
+     * then grouping those alleles on the same physical chromosome that would make that haplotype 
+     * call possible.  
+     *
+     * We are interested in identifying two types of heterozygote call "distributions":
+     * 1) AKnownBKnown: 
+     *    The heterzygote variants can be distributed on A and B physical chromosomes 
+     *    such that they identify 2 existing haplotypes. 
+     * 2) AKnownBNovel: 
+     *    The heterzygote variants can be distributed on A and B physical chromosomes such that they 
+     *    identify 1 existing haplotype on A, and the remaining alleles (after having assigned 
+     *    alleles to A) make up a novel haplotype.
+     *
+     * There is also a third case of ANovelBNovel that we could call, but that behaviour is not 
+     * implemented.
+     *
+     * There may be multiple combinations of answers available for 1) and 2).  We return all 
+     * possible combinations of these 2 types.
+     *
+     * For example:
+     *
+     * hetVariants: 
+     * [
+     *     // rs1 AT
+     *     [snp_id: rs1, allele: A],
+     *     [snp_id: rs1, allele: T],
+     *     // rs2 AT
+     *     [snp_id: rs2, allele: A],
+     *     [snp_id: rs2, allele: T],
+     * ]
+     *
+     * Gene-haplotype matrix:
+     * Haplotype | rs1 | rs2
+     * *1        | A   | T
+     * *2        | T   | A
+     * *3        | A   | A
+     * *4        | T   | T
+     *
+     * Returns:
+     * [
+     *     AKnownBKnown: [
+     *         [
+     *             [physical_chromosome: 'A', snp_id: 'rs1', allele: 'A'],
+     *             [physical_chromosome: 'A', snp_id: 'rs1', allele: 'A'],
+     *             [physical_chromosome: 'B', snp_id: 'rs2', allele: 'T'],
+     *             [physical_chromosome: 'B', snp_id: 'rs2', allele: 'T'],
+     *         ],
+     *         [
+     *             [physical_chromosome: 'A', snp_id: 'rs1', allele: 'A'],
+     *             [physical_chromosome: 'A', snp_id: 'rs1', allele: 'T'],
+     *             [physical_chromosome: 'B', snp_id: 'rs2', allele: 'T'],
+     *             [physical_chromosome: 'B', snp_id: 'rs2', allele: 'A'],
+     *         ],
+     *     ]
+     *     AKnownBNovel: [
+     *        // similar to AKnownBKnown, but it's an empty list in this case
+     *     ]
      * ]
      */
     static def disambiguateHets(GeneHaplotypeMatrix geneHaplotypeMatrix, hetVariants) {
+
         def sortedHets = hetVariants.sort(false) { [it.snp_id, it.allele] }
         eachN(2, sortedHets) { h1, h2 ->
             if (h1.snp_id != h2.snp_id) {
                 throw new IllegalArgumentException("Expected a list of heterozygote snps (i.e. 2 variants with the same snp_id)")
             }
         }
+
+        if (hetVariants.size() == 2) {
+            /* hetVariants has only 1 snp_id; it's something like:
+             * [snp_id: rs1, allele: A],
+             * [snp_id: rs1, allele: T],
+             * This is a special case, since given only 1 heterozygote call for a gene's SNP, we can 
+             * arbitrarily put each allele on chromosome A or B, regardless of what haplotypes have 
+             * for those alleles.
+             */
+            def (v1, v2) = sortedHets
+            return [
+                AKnownBKnown: [[
+                    [
+                        physical_chromosome: 'A',
+                        snp_id: v1.snp_id,
+                        allele: v1.allele,
+                    ],
+                    [
+                        physical_chromosome: 'B',
+                        snp_id: v2.snp_id,
+                        allele: v2.allele,
+                    ],
+                ]],
+                AKnownBNovel: [],
+            ]
+        }
+
         def variantToHaplotypes = [:]
         def geneHaplotypes = [] as Set
         geneHaplotypeMatrix.each { haplotype, alleles ->
             geneHaplotypes.add(haplotype.haplotypeName)
-            [geneHaplotypeMatrix.snpIds, alleles].transpose().each { snpIdAllele ->
+            [geneHaplotypeMatrix.snpIds as List, alleles].transpose().each { snpIdAllele ->
                 if (!variantToHaplotypes.containsKey(snpIdAllele)) {
                     variantToHaplotypes[snpIdAllele] = [haplotype.haplotypeName] as Set
                 } else {
@@ -145,9 +212,9 @@ public class Algorithm {
             def asVariants = { physicalChromosome, alleles ->
                 [alleles, hetSnps].transpose().collect { allele, snpId -> 
                     [
-                        allele: allele,
-                        snp_id: snpId,
                         physical_chromosome: physicalChromosome,
+                        snp_id: snpId,
+                        allele: allele,
                     ]
                 }
             }
@@ -197,6 +264,23 @@ public class Algorithm {
 
         String toString() {
             _allelesSoFar().toString()
+        }
+    }
+
+    static def eachN(int n, iter, Closure f) {
+        def xs = [] 
+        iter.each { x ->
+            xs.add(x)
+            if (xs.size() == n) {
+                f(*xs)
+                xs = []
+            }
+        }
+        if (xs != []) {
+            /* Fill the rest with nulls.
+             */ 
+            def ys = xs + ([null] * ( n - xs.size() ))
+            f(*ys)
         }
     }
 

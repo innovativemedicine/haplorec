@@ -1,3 +1,8 @@
+-- -------------------------------------------------------------------------------------------------
+-- Define PharmGKB data tables.  
+-- That is, a table used for storing data scraped from PharmGKB's website.
+-- -------------------------------------------------------------------------------------------------
+
 -- May be useful later to provide haplotype-specific data
 -- CREATE TABLE haplotype (
 --     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
@@ -175,7 +180,8 @@ CREATE TABLE job (
     primary key (id)
 ) {{SQL_ENGINE}};
 
-{% macro job_patient_table(table_suffix, table_prefix='') -%}
+{# Define the things that job_patient_* tables have in common -#}
+{%- macro job_patient_table(table_suffix, table_prefix='') -%}
 CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
     id bigint not null auto_increment,
     job_id bigint not null,
@@ -185,6 +191,28 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
     primary key (id)
 ) {{SQL_ENGINE}};
 {%- endmacro -%}
+
+{# Define fields needed to determine which heterozygote combination this result comes from -#}
+{%- macro het_combo_fields() -%}
+    het_combo integer,
+    het_combos integer,
+{%- endmacro -%}
+
+{%- macro physical_chromosome_field() -%}
+    physical_chromosome enum('A', 'B'),
+{%- endmacro -%}
+
+{# Define fields needed to determine which physical chromosome this record comes from (and which heterozygote combination) -#}
+{%- macro physical_chromosome_fields() -%}
+    {{ physical_chromosome_field() }}
+    {{ het_combo_fields() }}
+{%- endmacro -%}
+
+-- -------------------------------------------------------------------------------------------------
+-- Define job_patient_* tables.  
+-- That is, a table which is used for storing the results of a stage in the pipeline, and 
+-- corresponds to a node the pipeline graph.
+-- -------------------------------------------------------------------------------------------------
 
 {% call job_patient_table('genotype_drug_recommendation') -%}
     drug_recommendation_id bigint,
@@ -198,26 +226,22 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
     foreign key (drug_recommendation_id) references drug_recommendation(id),
 {%- endcall %}
 
-{% macro physical_chromosome_fields() -%}
-    physical_chromosome varchar({{SQL_PHYSICAL_CHROMOSOME_LENGTH}}),
-    het_combo integer,
-    het_combos integer,
-{%- endmacro -%}
-
 {% call job_patient_table('gene_haplotype') -%}
-{{ physical_chromosome_fields() -}}
+    {{ physical_chromosome_fields() }}
     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
     haplotype_name varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
     index gene_name_haplotype_name_idx (gene_name, haplotype_name),
 {%- endcall %}
 
 {% call job_patient_table('gene_phenotype') -%}
+    {# {{ het_combo_fields() }} #}
     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
     phenotype_name varchar({{SQL_PHENOTYPE_NAME_LENGTH}}),
     index gene_name_phenotype_name_idx (gene_name, phenotype_name),
 {%- endcall %}
 
 {% call job_patient_table('genotype') -%}
+    {# {{ het_combo_fields() }} #}
     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
     haplotype_name1 varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
     haplotype_name2 varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
@@ -226,7 +250,7 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
 
 -- ambiguous as to what physical_chromosome variants occur on
 {% call job_patient_table('variant') -%}
-    physical_chromosome varchar({{SQL_PHYSICAL_CHROMOSOME_LENGTH}}),
+    {{ physical_chromosome_field() }}
     snp_id varchar({{SQL_SNP_ID_LENGTH}}),
     allele varchar({{SQL_ALLELE_LENGTH}}),
     -- zygosity is one of 'het' (for a heterozygous call) or 'hom' (for a homozygous call)
@@ -237,75 +261,16 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
 {%- endcall %}
 
 {% call job_patient_table('het_variant') -%}
-    {{ physical_chromosome_fields() -}}
+    {{ physical_chromosome_fields() }}
     snp_id varchar({{SQL_SNP_ID_LENGTH}}),
     allele varchar({{SQL_ALLELE_LENGTH}}),
     index snp_id_allele_idx (snp_id, allele),
     index het_combo_phys_idx (het_combo, physical_chromosome),
 {%- endcall %}
 
-{#-
-{% call job_patient_table('variant_gene_haplotype', table_prefix='_') -%}
-    physical_chromosome varchar({{SQL_PHYSICAL_CHROMOSOME_LENGTH}}),
-    snp_id varchar({{SQL_SNP_ID_LENGTH}}),
-    allele varchar({{SQL_ALLELE_LENGTH}}),
-    gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
-    haplotype_name varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
-    zygosity char(3), 
-    index gene_name_haplotype_name_snp_id_allele_idx (gene_name, haplotype_name, snp_id, allele),
-    index job_pat_phys_gene_haplo_idx (job_id, patient_id, physical_chromosome, gene_name, haplotype_name),
-{%- endcall %}
--#}
-
-{#-
--- add non-set gene_name2/haplotype_name2 so we can group by it and select it in variantToGeneHaplotype
--- (selectWhereSetContains uses "join using (A/B group fields)" which leads to ambiguity otherwise).
-create algorithm=merge view _job_patient_variant_gene_haplotype_view ( 
-    job_id,
-    patient_id,
-    physical_chromosome,
-    snp_id,
-    allele,
-    gene_name,
-    haplotype_name,
-    gene_name2,
-    haplotype_name2,
-    zygosity 
-) as 
-select job_id, patient_id, physical_chromosome, snp_id, allele, gene_name, haplotype_name, gene_name, haplotype_name, zygosity
-from _job_patient_variant_gene_haplotype;
--#}
-
-{#-
-{% call job_patient_table('variant_gene', table_prefix='_') -%}
-    physical_chromosome varchar({{SQL_PHYSICAL_CHROMOSOME_LENGTH}}),
-    snp_id varchar({{SQL_SNP_ID_LENGTH}}),
-    allele varchar({{SQL_ALLELE_LENGTH}}),
-    gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
-    zygosity char(3), 
-    index gene_name_snp_id_allele_idx (gene_name, snp_id, allele),
-    index job_pat_phys_gene_idx (job_id, patient_id, physical_chromosome, gene_name),
-{%- endcall %}
--#}
-
-{#-
-create algorithm=merge view _job_patient_variant_gene_view ( 
-    job_id,
-    patient_id,
-    physical_chromosome,
-    snp_id,
-    allele,
-    gene_name,
-    gene_name2,
-    zygosity 
-) as 
-select job_id, patient_id, physical_chromosome, snp_id, allele, gene_name, gene_name, zygosity
-from _job_patient_variant_gene;
--#}
-
 -- GeneName, { (SnpId, Allele) }
 {% call job_patient_table('novel_haplotype') -%}
-{{ physical_chromosome_fields() -}}
+    {{ physical_chromosome_fields() }}
     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
     index job_pat_phys_idx (job_id, patient_id, physical_chromosome),
 {%- endcall %}

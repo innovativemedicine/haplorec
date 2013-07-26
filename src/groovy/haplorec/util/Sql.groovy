@@ -329,59 +329,53 @@ class Sql {
     }
 	
 	static def insert(groovy.sql.Sql sql, table, columns, rows) {
-        if (rows == null) {
+        if (rows == null || rows instanceof List && rows.size() == 0) {
             return
         }
-        int rowSize
-        if (rows instanceof List) {
-            if (rows.size() == 0) {
-                return
-            }
-            rowSize = rows[0].size()
-            if (columns == null && rows[0] instanceof LinkedHashMap) {
-                columns = rows[0].keySet()
-            }
-        } else {
-            rowSize = columns.size()
-        }
 
-        def qmarks = { n -> (['?'] * n).join(', ') }
-        if (rowSize != 0) {
-            File infile = File.createTempFile("${table}_table", '.tsv')
-            try {
-                infile.withPrintWriter() { w ->
-                    rows.each { row ->
-                        // TOOD: handle quoting
-                        w.println(
-                            (row instanceof LinkedHashMap ? row.values() : row).collect { column ->
-                                if (column == null) {
-                                    // We need to use \N in the data file to represent a NULL value in mysql
-                                    // http://stackoverflow.com/questions/2675323/mysql-load-null-values-from-csv-data
-                                    '\\N'
-                                } else {
-                                    column
-                                }
-                            }.join('\t')
-                        )
+        File infile = File.createTempFile("${table}_table", '.tsv')
+        try {
+            Integer rowSize
+            infile.withPrintWriter() { w ->
+                rows.each { row ->
+                    if (rowSize == null) {
+                        /* This will happen on the first iteration.
+                         */
+                        assert row instanceof Collection || row instanceof Map
+                        rowSize = row.size()
                     }
+                    if (columns == null && row instanceof LinkedHashMap) {
+                        /* This will happen on the first iteration.
+                         */
+                        columns = row.keySet()
+                    }
+                    w.println(
+                        (row instanceof LinkedHashMap ? columns.collect { row[it] } : row).collect { value ->
+                            // TOOD: handle escaping '\t' in value via quoting 
+                            if (value == null) {
+                                // We need to use \N in the data file to represent a NULL value in mysql
+                                // http://stackoverflow.com/questions/2675323/mysql-load-null-values-from-csv-data
+                                '\\N'
+                            } else {
+                                value
+                            }
+                        }.join('\t')
+                    )
                 }
-                sql.execute "load data local infile :infile into table ${table}${(columns.size() > 0) ? "(${columns.join(', ')})" : ''}", [infile: infile.absolutePath]
-            } finally {
-                infile.delete()
-            } 
-            // NOTE: this batch insert thing is slow.
-            // String stmt = "insert into ${table}${(columns.size() > 0) ? "(${columns.join(', ')})" : ''} values (${qmarks(rowSize)})"
-            // 
-            // sql.withBatch(stmt) { ps ->
-            //     rows.each { r -> 
-            //         ps.addBatch(r) 
-            //     }
-            // }
-        } else {
-            rows.each { r ->
-                sql.execute("insert into ${table}() values (${qmarks(r.size())})", r)
             }
-        }
+            sql.execute "load data local infile :infile into table ${table}${(columns.size() > 0) ? "(${columns.join(', ')})" : ''}", [infile: infile.absolutePath]
+        } finally {
+            infile.delete()
+        } 
+
+        // NOTE: this batch insert thing is slow.
+        // String stmt = "insert into ${table}${(columns.size() > 0) ? "(${columns.join(', ')})" : ''} values (${qmarks(rowSize)})"
+        // 
+        // sql.withBatch(stmt) { ps ->
+        //     rows.each { r -> 
+        //         ps.addBatch(r) 
+        //     }
+        // }
 	}
 	
 	static def insert(groovy.sql.Sql sql, table, rows) {

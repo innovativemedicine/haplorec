@@ -13,10 +13,6 @@ public class Pipeline {
     private static def defaultTables = [
         variant                     : 'job_patient_variant',
         hetVariant                  : 'job_patient_het_variant',
-        variantGene                 : '_job_patient_variant_gene',
-        variantGeneView             : '_job_patient_variant_gene_view',
-        variantGeneHaplotype        : '_job_patient_variant_gene_haplotype',
-        variantGeneHaplotypeView    : '_job_patient_variant_gene_haplotype_view',
         genePhenotype               : 'job_patient_gene_phenotype',
         genotype                    : 'job_patient_genotype',
         geneHaplotype               : 'job_patient_gene_haplotype',
@@ -30,8 +26,20 @@ public class Pipeline {
         it.value.startsWith('job_patient_')
     }.inject([:]) { m, entry -> 
         m[entry.key] = entry.value
-        m 
+        return m 
     }
+    /* Tables that are affected by the heterozygote combination, and hence provide het_combo and 
+     * het_combos fields to keep track of which combination we're talking about.
+     */
+    private static Set hetComboTables = [
+        'hetVariant',
+        // 'genePhenotype',
+        'genotype',
+        'geneHaplotype',
+        'novelHaplotype',
+        // 'genotypeDrugRecommendation',
+        // 'phenotypeDrugRecommendation',
+    ] as Set
 	
     private static def setDefaultKwargs(Map kwargs) {
         def setDefault = { property, defaultValue -> 
@@ -57,10 +65,10 @@ public class Pipeline {
         setDefaultKwargs(kwargs)
 		// groupedRowsToColumns(sql, kwargs.geneHaplotype, kwargs.genotype)
 		// fill job_genotype using job_gene_haplotype, by mapping groups of 2 haplotypes (i.e. biallelic genes) to single job_genotype rows
-        def groupBy = ['job_id', 'patient_id', 'gene_name']
+        def groupBy = ['job_id', 'patient_id', 'gene_name', 'het_combo']
 		Sql.groupedRowsToColumns(sql, kwargs.geneHaplotype, kwargs.genotype,
 			groupBy, 
-			['job_id':'job_id', 'patient_id':'patient_id', 'gene_name':'gene_name', 'haplotype_name':['haplotype_name1', 'haplotype_name2']],
+			['job_id':'job_id', 'patient_id':'patient_id', 'gene_name':'gene_name', 'het_combo':'het_combo', 'het_combos':'het_combos', 'haplotype_name':['haplotype_name1', 'haplotype_name2']],
 			orderRowsBy: ['haplotype_name'],
 			badGroup: (kwargs.tooManyHaplotypes == null) ? null : { group ->
                 def collectColumn = { column ->
@@ -95,57 +103,11 @@ public class Pipeline {
         )
     }
 
-    static def variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
-        setDefaultKwargs(kwargs)
-        // Create the variantGeneHaplotype table.
-        variantToVariantGeneHaplotype(kwargs, sql)
-        def columns = ['job_id', 'patient_id', 'gene_name', 'haplotype_name', 'physical_chromosome']
-        def setContainsQuery = Sql.selectWhereSetContains(
-            sql,
-            kwargs.variantGeneHaplotypeView,
-            'gene_haplotype_variant',
-			['gene_name', 'haplotype_name', 'snp_id', 'allele'],
-            tableAGroupBy: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2', 'haplotype_name2'],
-            tableBGroupBy: [],
-			select: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2', 'haplotype_name2'],
-            saveAs: 'query', 
-            sqlParams: kwargs.sqlParams,
-			tableAWhere: { t -> "${t}.job_id = :job_id" },
-        )
-        def query = """\
-            |select job_id, patient_id, gene_name2 as gene_name, haplotype_name2 as haplotype_name, physical_chromosome from (
-            |    $setContainsQuery
-            |) s 
-            |where
-            |s.gene_name2 not in (
-            |    select gene_name
-            |    from job_patient_variant v
-            |    join gene_haplotype_variant using (snp_id)
-            |    where 
-            |    v.zygosity = 'het' and
-            |    v.job_id = :job_id and
-            |    v.patient_id = s.patient_id and
-            |    v.physical_chromosome = s.physical_chromosome and
-            |    gene_haplotype_variant.haplotype_name = s.haplotype_name2
-            |    group by gene_name
-            |    having count(*) > 1
-            |)
-            |group by job_id, patient_id, gene_name2, physical_chromosome
-            |having count(*) = 1
-        """.stripMargin()
-        Sql.selectAs(sql, query, columns,
-			intoTable: kwargs.geneHaplotype,
-			sqlParams: kwargs.sqlParams,
-            saveAs: 'existing')
-        // cleanup the helper tables
-        cleanup(sql, kwargs.variantGeneHaplotype, kwargs.sqlParams.job_id)
-    }
-    
     private static String _eq(sqlParams) {
         sqlParams.collect { param -> "${param.key} = :${param.key}" }.join(" and ") 
     }
 
-    static def variantToGeneHaplotypeRedo(Map kwargs = [:], groovy.sql.Sql sql) {
+    static def variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
         def distinctGeneAndPatientSql = { variantsTable -> 
             /* Select all (gene_name, patient_id) tuples where there exists at least one variant for 
@@ -377,131 +339,8 @@ public class Pipeline {
         sql.execute "delete from $table where job_id = :job_id".toString(), [job_id: jobId]
     }
 
-    static def variantToVariantGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
-        def columns = ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'gene_name', 'haplotype_name', 'zygosity']
-        Sql.selectAs(sql, """\
-            |select ${columns.join(', ')}
-            |from ${kwargs.variant}
-            |join (
-            |    select distinct gene_name, haplotype_name, snp_id
-            |    from gene_haplotype_variant 
-            |) gene_snp
-            |using (snp_id)
-            |where job_id = :job_id
-            |""".stripMargin(), columns,
-			intoTable: kwargs.variantGeneHaplotype,
-			sqlParams: kwargs.sqlParams,
-            saveAs: 'existing')
-    }
-
-    static def variantToVariantGene(Map kwargs = [:], groovy.sql.Sql sql) {
-        def columns = ['job_id', 'patient_id', 'physical_chromosome', 'snp_id', 'allele', 'gene_name', 'zygosity']
-        Sql.selectAs(sql, """\
-            |select ${columns.join(', ')}
-            |from ${kwargs.variant}
-            |join gene_snp
-            |using (snp_id)
-            |where job_id = :job_id
-            |""".stripMargin(), columns,
-			intoTable: kwargs.variantGene,
-			sqlParams: kwargs.sqlParams,
-            saveAs: 'existing')
-    }
-
     static def geneHaplotypeToNovelHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
-        setDefaultKwargs(kwargs)
-        variantToVariantGene(kwargs, sql)
-        def columns = ['job_id', 'patient_id', 'gene_name', 'physical_chromosome']
-        def setContainsQuery = Sql.selectWhereSetContains(
-            sql,
-            kwargs.variantGeneView,
-            'gene_haplotype_variant',
-			['gene_name', 'snp_id', 'allele'],
-            tableAGroupBy: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2'],
-            tableBGroupBy: ['haplotype_name'],
-			select: ['job_id', 'patient_id', 'physical_chromosome', 'gene_name2', 'haplotype_name'],
-            saveAs: 'query', 
-            sqlParams: kwargs.sqlParams,
-			tableAWhere: { t -> "${t}.job_id = :job_id" },
-        )
-        def query = """\
-            |select ${columns.join(', ')}
-            |from ${kwargs.variant} v
-            |join gene_snp gs using (snp_id)
-            |where
-            |job_id = :job_id and
-            |physical_chromosome is not null and
-            |gene_name not in (
-            |    select gene_name
-            |    from ${kwargs.variant}
-            |    join gene_snp using (snp_id)
-            |    where 
-            |    zygosity = 'het' and
-            |    job_id = :job_id and
-            |    patient_id = v.patient_id and
-            |    physical_chromosome = v.physical_chromosome and
-            |    gene_name = gs.gene_name
-            |    group by gene_name
-            |    having count(*) > 1
-            |) and not exists (
-            |    select *
-            |    from gene_haplotype
-            |    join (
-            |        select job_id, patient_id, physical_chromosome, gene_name2 as gene_name, haplotype_name from (
-            |            $setContainsQuery
-            |        ) t
-            |    ) s using (gene_name, haplotype_name)
-            |    where 
-            |    job_id = :job_id and
-            |    patient_id = v.patient_id and
-            |    physical_chromosome = v.physical_chromosome and
-            |    gene_name = gs.gene_name
-            |)
-            |group by ${columns.join(', ')}
-        """.stripMargin()
-
-
-            // |) and exists (
-            // |    select gene_name, snp_id
-            // |    from ${kwargs.variantGene} vg
-            // |    where 
-            // |    job_id = :job_id and
-            // |    patient_id = v.patient_id and
-            // |    physical_chromosome = v.physical_chromosome and
-            // |    gene_name = gs.gene_name and
-            // |    not exists (
-            // |        select *
-            // |        from gene_haplotype_variant
-            // |        where
-            // |        gene_name = vg.gene_name and
-            // |        snp_id = vg.snp_id and
-            // |        allele = vg.allele
-            // |    )
-            // |)
-
-
-                // -- a (gene, snp) whose allele doesn't occur in gene_hap_var
-            // |) and gene_name not in (
-            // |    select gene_name
-            // |    from ${kwargs.geneHaplotype}
-            // |    where
-            // |    job_id = :job_id and
-            // |    patient_id = v.patient_id and
-            // |    physical_chromosome = v.physical_chromosome
-            // |)
-            // |group by ${columns.join(', ')}
-            // |having count(*) = 1
-
-        Sql.selectAs(sql, query, columns,
-			intoTable: kwargs.novelHaplotype,
-			sqlParams: kwargs.sqlParams,
-            saveAs: 'existing')
-        // cleanup the helper tables
-        cleanup(sql, kwargs.variantGene, kwargs.sqlParams.job_id)
-    }
-
-    static def geneHaplotypeToNovelHaplotypeRedo(Map kwargs = [:], groovy.sql.Sql sql) {
-        /* Do nothing, since it's already been done in variantToGeneHaplotypeRedo.
+        /* Do nothing, since it's already been done in variantToGeneHaplotype.
          */
     }
 
@@ -641,13 +480,31 @@ public class Pipeline {
             def input = pipelineInput(alias, rawInput)
             def jobRowIter = new Object() {
                 def each(Closure f) {
+                    /* The set of fields we will add here, that are not already provided in input.
+                    */
+                    Set fieldsToAdd = ['job_id', 'het_combo', 'het_combos'] as Set
                     input.each { row ->
-                        row.add(0, kwargs.jobId)
-						f(row)
+                        Map mapRow = [job_id: kwargs.jobId]
+                        [
+                            jobTableInsertColumns[alias].grep { !(it in fieldsToAdd) }, 
+                            row
+                        ].transpose().inject(mapRow) { m, kv ->
+                            def (column, value) = kv
+                            m[column] = value
+                            return m
+                        }
+                        if (alias in hetComboTables) {
+                            /* If we are given a stage in the pipeline as input, assume that there is only 1 
+                             * heterozygous combination.
+                             */
+                            mapRow.het_combo = 1
+                            mapRow.het_combos = 1
+                        }
+						f(mapRow)
                     }
                 }
             }
-            Sql.insert(sql, tbl[alias], jobTableInsertColumns[alias], jobRowIter)
+            Sql.insert(sql, tbl[alias], null, jobRowIter)
         }
         def pipelineKwargs = tbl + [
             sqlParams:[
@@ -667,13 +524,13 @@ public class Pipeline {
             geneHaplotypeToGenotype(pipelineKwargs, sql)
         }
         dependencies.geneHaplotype.rule = { ->
-            variantToGeneHaplotypeRedo(pipelineKwargs, sql)
+            variantToGeneHaplotype(pipelineKwargs, sql)
         }
         dependencies.hetVariant.rule = { ->
             variantToHetVariant(pipelineKwargs, sql)
         }
         dependencies.novelHaplotype.rule = { ->
-            geneHaplotypeToNovelHaplotypeRedo(pipelineKwargs, sql)
+            geneHaplotypeToNovelHaplotype(pipelineKwargs, sql)
         }
         dependencies.variant.rule = { ->
             if (kwargs.containsKey('variants')) {
@@ -748,5 +605,19 @@ public class Pipeline {
             // throw new IllegalArgumentException("Invalid input for table ${tableAlias}; expected a list of rows or a filepath but saw ${input}")
         }
     }
+
+    /* Given an iterator over [x1, x2, ..., xn], return an iterator over [g(x1), g(x2), ..., g(xn)].
+     * i.e. your standard map function over an iterator instead of a list.
+     */
+    private static def map(iter, Closure g) {
+        return new Object() {
+            def each(Closure f) {
+                iter.each { x ->
+                    f(g(x))
+                }
+            }
+        }
+    }
+
     
 }

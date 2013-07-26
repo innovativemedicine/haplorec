@@ -7,9 +7,9 @@ public class PipelineInput {
     // if we see the header, skip it, o/w assume its a row
     static final Boolean defaultRequireHeader = false
     static final Map inputHeaders = [
-        variant : ['PLATE', 'EXPERIMENT', 'CHIP', 'WELL_POSITION', 'ASSAY_ID', 'GENOTYPE_ID', 'DESCRIPTION', 'SAMPLE_ID', 'ENTRY_OPERATOR'],
+        variant       : ['PLATE', 'EXPERIMENT', 'CHIP', 'WELL_POSITION', 'ASSAY_ID', 'GENOTYPE_ID', 'DESCRIPTION', 'SAMPLE_ID', 'ENTRY_OPERATOR'],
         genePhenotype : ['SAMPLE_ID', 'GENE', 'PHENOTYPE'],
-        genotype : ['SAMPLE_ID', 'GENE', 'HAPLOTYPE', 'HAPLOTYPE'],
+        genotype      : ['SAMPLE_ID', 'GENE', 'HAPLOTYPE', 'HAPLOTYPE'],
         geneHaplotype : ['SAMPLE_ID', 'GENE', 'HAPLOTYPE'],
     ]
 
@@ -78,10 +78,17 @@ public class PipelineInput {
                     } else if (allelesStr.length() == 0) {
                         alleles = ['']
                     } else {
+                        /* Given a variant like "rs1 CAT", we assume that means:
+                         *
+                         * chromosome A:
+                         * rs1 CAT 
+                         *
+                         * chromosome B:
+                         * rs1 CAT 
+                         */
                         // TOOD: zygosity could be het (Swan said something about CTTdel being heterozygous)
                         zygosity = 'hom'
                         alleles = [allelesStr] * 2
-                        // throw new Input.InvalidInputException("Number of alleles was ${allelesStr.length()} for ${snpId} ${allelesStr}; expected 0, 1, or 2".toString())
                     }
                     int i = 0
                     alleles.each { allele ->

@@ -194,6 +194,8 @@ public class PipelineTest extends DBTest {
 		assertJobTable('job_patient_genotype', [
 			[1, 'patient2', 'g1', '*1', '*3'],
             [1, 'patient1', 'g1', '*1', '*1'],
+            [1, 'patient3', 'g1', '*3', '*5'],
+            [1, 'patient3', 'g1', '*1', '*4'],
 		])
 		assertJobTable('job_patient_gene_phenotype', [
 			[1, 'patient2', 'g1', 'heterozygote'],
@@ -483,18 +485,6 @@ public class PipelineTest extends DBTest {
 	void testDrugRecommendationsInvalidInputVariants() {
 
 		def msg
-		
-        msg = shouldFail(InvalidInputException) {
-            drugRecommendationsTest(
-                variants: [rowsAsStream([
-                    PipelineInput.inputHeaders.variant,
-                    ['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr1_117098850', 'CA', 'A.Conservative', '1063-117507', 'Automatic'],
-                    ['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr1_196991682', 'G', 'A.Conservative', '1063-117507', 'Automatic'],
-                    ['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr22_35868467', 'CAT', 'A.Conservative', '1063-117507', 'Automatic'],
-                ])]
-            )
-        }
-        assert msg =~ /Number of alleles was/
 
         // too few columns
         msg = shouldFail(InvalidInputException) {

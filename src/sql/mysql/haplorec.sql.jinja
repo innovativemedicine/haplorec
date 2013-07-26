@@ -215,13 +215,17 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
 -- -------------------------------------------------------------------------------------------------
 
 {% call job_patient_table('genotype_drug_recommendation') -%}
+    {# {{ het_combo_fields() }} #}
     drug_recommendation_id bigint,
+    -- TODO: + het_combo, het_combos
     unique (job_id, patient_id, drug_recommendation_id),
     foreign key (drug_recommendation_id) references drug_recommendation(id),
 {%- endcall %}
 
 {% call job_patient_table('phenotype_drug_recommendation') -%}
+    {# {{ het_combo_fields() }} #}
     drug_recommendation_id bigint,
+    -- TODO: + het_combo, het_combos
     unique (job_id, patient_id, drug_recommendation_id),
     foreign key (drug_recommendation_id) references drug_recommendation(id),
 {%- endcall %}
@@ -241,7 +245,7 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
 {%- endcall %}
 
 {% call job_patient_table('genotype') -%}
-    {# {{ het_combo_fields() }} #}
+    {{ het_combo_fields() }}
     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
     haplotype_name1 varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
     haplotype_name2 varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),

@@ -1,6 +1,7 @@
 package haplorec.util.pipeline
 
 import haplorec.util.Input
+import haplorec.util.Row
 import haplorec.util.Sql
 import haplorec.util.dependency.DependencyGraphBuilder
 import haplorec.util.dependency.Dependency
@@ -117,14 +118,14 @@ public class Pipeline {
             /* Select all (gene_name, patient_id) tuples where there exists at least one variant for 
              * that gene for that patient.
              *
-             * Note that physical_chromosome is not null is used to filter out lines from the variant 
+             * Note that allele is not null is used to filter out lines from the variant 
              * file input where a SNP is listed, but no allele is present.
              */
             """\
             |select distinct gene_name, patient_id
             |from ${variantsTable}
             |join gene_haplotype_variant using (snp_id)
-            |where physical_chromosome is not null and job_id = :job_id
+            |where ${variantsTable}.allele is not null and job_id = :job_id
             |""".stripMargin()
         }
         GeneHaplotypeMatrix ghm
@@ -281,14 +282,15 @@ public class Pipeline {
                         saveAs: 'rows')
                 )
                 def columns
-                combos.each { hetComboType, comboOfHets ->
+                int hetCombo = 1
+                int hetCombos = combos.values().sum { combosOfHets -> combosOfHets.size() }
+                combos.each { hetComboType, combosOfHets ->
                     /* Add het_combo and het_combos to each heterzygote variant before insertion 
                      * into hetVariant (for each possible combination).
                      */
-                    int hetCombos = comboOfHets.size()
-                    comboOfHets.eachWithIndex { hets, i -> 
+                    combosOfHets.each { hets -> 
                         hets.each { h ->
-                            h.het_combo = i + 1 
+                            h.het_combo = hetCombo
                             h.het_combos = hetCombos
                             h.job_id = kwargs.sqlParams.job_id
                             h.patient_id = patientId
@@ -296,12 +298,13 @@ public class Pipeline {
 								columns = h.keySet()
 							}
                         }
+                        hetCombo += 1
                     }
                 }
 				if (columns != null) {
 					/* There's at least one hetVariant to insert.
 					 */
-					Sql.insert(sql, kwargs.hetVariant, columns, flatten(flatten(combos.values())))
+					Sql.insert(sql, kwargs.hetVariant, columns, Row.flatten(Row.flatten(combos.values())))
 				}
             },
             sqlParams: kwargs.sqlParams,
@@ -318,23 +321,6 @@ public class Pipeline {
             kwargs.eachGene(geneName)
             geneToPatientId[geneName].each { patientId ->
                 kwargs.eachPatient(geneName, patientId)
-            }
-        }
-    }
-
-    /* Return an iterator that flattens it's iterables by 1 level. 
-     * Examples:
-     *
-     * flatten([[1, 2], [3, 4]])                                    == [1, 2, 3, 4]
-     * flatten(        [ [ [1, 2], [3, 4] ], [ [5, 6], [7, 8] ] ])  == [ [1, 2], [3, 4], [5, 6], [7, 8] ]
-     * flatten(flatten([ [ [1, 2], [3, 4] ], [ [5, 6], [7, 8] ] ])) == [ 1, 2, 3, 4, 5, 6, 7, 8 ]
-     */
-    static def flatten(iterables) {
-        return new Object() {
-            def each(Closure f) {
-                iterables.each { iter ->
-                    iter.each(f)
-                }
             }
         }
     }

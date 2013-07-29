@@ -388,41 +388,35 @@ run aaron's PGX file
   - but regardless of hom variants, if there are multiple het variants, we can't unambiguously say what 
     haplotype we have (it is an error to only consider 1 het variant)
 
-- add a job_patient_novel_haplotype table that records novel haplotype's, and populate it during variantToGeneHaplotype
+- disambiguation of heterozygote variants
+- 1 het
+  - 2 known haplotypes
+  - 1 known, 1 novel
+- > 1 het
+  - 2 known haplotypes, 1 combination
+  - 2 known haplotypes, 2 combinations
+  - 1 known, 1 novel, 1 combination
+  - 1 known, 1 novel, 2 combinations
+  - 2 known haplotypes OR 1 known 1 novel, 1 combination each
+  - 2 known haplotypes, 2 combinations OR 1 known 1 novel, 1 combination
+  - 2 novel
+  - 1 known, 1 novel OR 2 novel
+- test inside Pipeline 
+- 1 het
+  - 2 known haplotypes
+  - 1 known, 1 novel
+- > 1 het
+  - 2 known haplotypes, 1 combination
+  - 1 known, 1 novel, 1 combination
+  - 2 known haplotypes, 2 combinations
+  - 1 known, 1 novel, 2 combinations
+  - 2 known haplotypes OR 1 known 1 novel, 1 combination each
 
-- bug: figure out why some unique haplotypes have a null physical chromosome
-  - it's because we record some variants that have '' as the allele as having a null physical 
-    chromsome
+- ** make old tests incorporate het_combo / het_combos (if it makes sense to...)
+- fix report to show het_combo stuff
+- add wui stuff (het_combo, new hetVariant table, make the graph look ok)
+- ** create new tests to test new behaviour
+- stop assigning a physical chromosome for het-variants inside the variant table....?
+- re-run aaron's files
 
-- add het_combo / het_combos to all job_patient tables
-- bug: when we add het_combo / het_combos to tables, it messes up populating various tables from 
-  input files; probably just disable populating from anywhere except variant
-
-- bug: selectWhereSetContains needs to group by het_combo
-- bug: PipelineTest's need to add het_combo / het_combos to relavent tables
-  - variantsToHaplotypes should never get an empty list of variants
-- make old tests incorporate het_combo / het_combos
-- create new tests to test new behaviour:
-  - disambiguation of heterozygote variants
-    - 1 het
-      - 2 known haplotypes
-      - 1 known, 1 novel
-    - > 1 het
-      - 2 known haplotypes, 1 combination
-      - 2 known haplotypes, 2 combinations
-      - 1 known, 1 novel, 1 combination
-      - 1 known, 1 novel, 2 combinations
-      - 2 known haplotypes OR 1 known 1 novel, 1 combination each
-      - 2 known haplotypes, 2 combinations OR 1 known 1 novel, 1 combination
-      - 2 novel
-      - 1 known, 1 novel OR 2 novel
-  - test inside Pipeline 
-    - 1 het
-      - 2 known haplotypes
-      - 1 known, 1 novel
-    - > 1 het
-      - 2 known haplotypes, 1 combination
-      - 1 known, 1 novel, 1 combination
-      - 2 known haplotypes, 2 combinations
-      - 1 known, 1 novel, 2 combinations
-      - 2 known haplotypes OR 1 known 1 novel, 1 combination each
+- convert failing test into disambiguateHetsTest

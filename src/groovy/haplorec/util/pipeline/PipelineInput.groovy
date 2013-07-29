@@ -93,7 +93,7 @@ public class PipelineInput {
                     int i = 0
                     alleles.each { allele ->
                         def checkAllele = { value -> (allele == '') ? null : value } 
-                        def chromosome = checkAllele(chromosomes[i])
+                        def chromosome = (zygosity == 'het') ? null : checkAllele(chromosomes[i])
                         Input.applyF(kwargs.asList, [patientId, chromosome, snpId, checkAllele(allele), checkAllele(zygosity)], f)
                         if (chromosome != null) {
                             i += 1

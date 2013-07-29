@@ -65,10 +65,10 @@ class AlgorithmTest extends GroovyTestCase {
                 ['rs1050828'],
                 [
                     AKnownBKnown: [
-                        [
-                            ['C'],
-                            ['T'],
-                        ],
+						[
+							['C'],
+							['T'],
+						],
                     ],
                     AKnownBNovel: [
                     ],
@@ -206,6 +206,109 @@ class AlgorithmTest extends GroovyTestCase {
         )
     }
 
+    void testDisambiguateHetsSingleCombination() {
+        /* Test that we detect both *1/*2 and *3/*4 (since it's ambiguous which one it might be).
+         */
+        def geneName = 'g1'
+        def snpIds = ['rs1', 'rs2', 'rs3']
+        def haplotypeVariants = ReportTest.generateHaplotypeVariants(
+            snpIds,
+            [
+            '*1': ['A', 'C', 'T'],
+            '*2': ['A', 'G', 'A'],
+            '*3': ['T', 'G', 'T'],
+            '*4': ['G', 'C', 'A'],
+            ],
+        )
+        def matrix = new GeneHaplotypeMatrix(geneName: geneName, snpIds: snpIds, haplotypeVariants: haplotypeVariants)
+
+        disambiguateHetsTest(
+            matrix: matrix,
+            generatePatientVariants(
+                ['patient1'],
+                [
+                    het: [
+                        rs2: 'CG',
+                        rs3: 'TA',
+                    ],
+                ],
+            ),
+            generateExpected(
+                ['rs2', 'rs3'],
+                [
+                    AKnownBKnown: [
+                        [
+                            ['C', 'A'],
+                            ['G', 'T'],
+                        ],
+                        [
+                            ['C', 'T'],
+                            ['G', 'A'],
+                        ],
+                    ],
+                    AKnownBNovel: [
+                    ],
+                ]
+            ),
+        )
+
+        disambiguateHetsTest(
+            matrix: matrix,
+            generatePatientVariants(
+                ['patient2'],
+                [
+                    het: [
+                        rs1: 'CT',
+                    ],
+                ],
+            ),
+            generateExpected(
+                ['rs1'],
+                [
+                    AKnownBKnown: [
+                    ],
+                    AKnownBNovel: [
+                        [
+                            ['T'],
+                            ['C'],
+                        ],
+                    ],
+                ]
+            ),
+        )
+
+        disambiguateHetsTest(
+            matrix: matrix,
+            generatePatientVariants(
+                ['patient3'],
+                [
+                    het: [
+                        rs1: 'AT',
+                        rs2: 'CG',
+                    ],
+                ],
+            ),
+            generateExpected(
+                ['rs1', 'rs2'],
+                [
+                    AKnownBKnown: [
+                        [
+                            ['A', 'C'],
+                            ['T', 'G'],
+                        ],
+                    ],
+                    AKnownBNovel: [
+                        [
+                            ['A', 'G'],
+                            ['T', 'C'],
+                        ],
+                    ],
+                ]
+            ),
+        )
+
+    }
+
     def generateExpected(snpIds, expectedAlleles) {
         def asRows = { sequencePairs ->
             sequencePairs.collect { s1, s2 ->
@@ -225,9 +328,18 @@ class AlgorithmTest extends GroovyTestCase {
 
     def disambiguateHetsTest(Map kwargs = [:], hetVariants, expectedRows) {
         if (kwargs.matrix == null) { kwargs.matrix = matrix }
-        assertEquals(
-            expectedRows,
-            Algorithm.disambiguateHets(kwargs.matrix, hetVariants))
+        def sorted = { xs ->
+            xs.each { type, combos ->
+                combos.each { combo ->
+                    combo.sort()
+                }
+                combos.sort()
+            }
+            return xs
+        }
+        def got = sorted(Algorithm.disambiguateHets(kwargs.matrix, hetVariants))
+        def expect = sorted(expectedRows)
+        assert got == expect
     }
 
     static def generatePatientVariants(Map kwargs = [:], patientIds, variants) {

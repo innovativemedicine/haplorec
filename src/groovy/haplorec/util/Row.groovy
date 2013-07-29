@@ -313,4 +313,29 @@ class Row {
         }
     }
 
+    /* Return an iterator that flattens it's iterables by 1 level. 
+     * Examples:
+     *
+     * flatten([[1, 2], [3, 4]])                                    == [1, 2, 3, 4]
+     * flatten(        [ [ [1, 2], [3, 4] ], [ [5, 6], [7, 8] ] ])  == [ [1, 2], [3, 4], [5, 6], [7, 8] ]
+     * flatten(flatten([ [ [1, 2], [3, 4] ], [ [5, 6], [7, 8] ] ])) == [ 1, 2, 3, 4, 5, 6, 7, 8 ]
+     */
+    static def flatten(iterables) {
+        return new Object() {
+            def each(Closure f) {
+                iterables.each { iter ->
+                    iter.each(f)
+                }
+            }
+        }
+    }
+
+    static List asList(iter) {
+        List xs = []
+        iter.each { x ->
+            xs.add(x)
+        }
+        return xs
+    }
+
 }

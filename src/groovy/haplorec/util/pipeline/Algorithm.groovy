@@ -79,32 +79,6 @@ public class Algorithm {
             }
         }
 
-        if (hetVariants.size() == 2) {
-            /* hetVariants has only 1 snp_id; it's something like:
-             * [snp_id: rs1, allele: A],
-             * [snp_id: rs1, allele: T],
-             * This is a special case, since given only 1 heterozygote call for a gene's SNP, we can 
-             * arbitrarily put each allele on chromosome A or B, regardless of what haplotypes have 
-             * for those alleles.
-             */
-            def (v1, v2) = sortedHets
-            return [
-                AKnownBKnown: [[
-                    [
-                        physical_chromosome: 'A',
-                        snp_id: v1.snp_id,
-                        allele: v1.allele,
-                    ],
-                    [
-                        physical_chromosome: 'B',
-                        snp_id: v2.snp_id,
-                        allele: v2.allele,
-                    ],
-                ]],
-                AKnownBNovel: [],
-            ]
-        }
-
         def variantToHaplotypes = [:]
         def geneHaplotypes = [] as Set
         geneHaplotypeMatrix.each { haplotype, alleles ->
@@ -135,18 +109,32 @@ public class Algorithm {
             return BAlleles
         }
 
-        /* [A, T] => *1
-        /* [T, A] => *2
-         * Where key == allele for hetSnps[i]
-         *       value == a uniquely determined haplotype for that sequence of SNP's
+        /* [A, T]
+        /* [T, A]
+         * Where key == sequence of allele[i] for hetSnps[i]
          */
-        def hetSequenceToHaplotype = [:]
+        Set hetSequences = new LinkedHashSet()
 
         def uniqueSnps 
         uniqueSnps = { i, variants, sequence, haplotypes ->
-            if (i >= variants.size() && haplotypes.size() == 1) {
-                def alleles = sequence.alleles(numHets)
-                hetSequenceToHaplotype[alleles] = haplotypes.iterator().next() 
+            if (i >= variants.size() && (
+                    /* A unique haplotype is identified by this heterozygote sequence.
+                     */
+                    haplotypes.size() == 1 || (
+                        /* hetVariants has only 1 snp_id; it's something like:
+                         * [snp_id: rs1, allele: A], => known haplotype
+                         * [snp_id: rs1, allele: T], => novel haplotype
+                         * This is a special case, since given only 1 heterozygote call for a gene's SNP, we can 
+                         * arbitrarily put each allele on chromosome A or B, regardless of what haplotypes have 
+                         * for those alleles.
+                         */
+                        variants.size() == 2 && 
+                        haplotypes.size() > 0
+                    ) 
+                )
+            ) {
+                List alleles = sequence.alleles(numHets)
+                hetSequences.add(alleles)
             } else if (haplotypes.size() == 0) {
                 /* No known haplotype with this sequence.
                  */
@@ -173,7 +161,7 @@ public class Algorithm {
         }
         uniqueSnps(0, sortedHets, null, geneHaplotypes)
 
-        def hetSequences = new LinkedHashSet(hetSequenceToHaplotype.keySet())
+        // def hetSequences = new LinkedHashSet(hetSequenceToHaplotype.keySet())
         /* List of sequences ['A', 'T', ...] for physical chromosomes A and B, where both identify known haplotypes.
          */
         def A = []

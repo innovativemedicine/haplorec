@@ -7,6 +7,7 @@ import haplorec.test.util.TimedTest
 
 import haplorec.util.Input.InvalidInputException
 import haplorec.util.Sql
+import haplorec.util.Row
 
 import haplorec.util.dependency.Dependency
 
@@ -96,8 +97,8 @@ public class PipelineTest extends DBTest {
             gene_haplotype_variant: [
                 ['g1', '*1', 'rs1', 'A'],
                 ['g1', '*1', 'rs2', 'G'],
-                ['g1', '*2', 'rs3', 'C'],
-                ['g1', '*2', 'rs4', 'T'],
+                ['g1', '*2', 'rs1', 'C'],
+                ['g1', '*2', 'rs2', 'T'],
                 // ... with the addition haplotypes for all possible combinations of (rs1, A/G) and (rs2, A/G)
                 ['g1', '*3', 'rs1', 'G'],
                 ['g1', '*3', 'rs2', 'G'],
@@ -921,19 +922,128 @@ public class PipelineTest extends DBTest {
      * heterozygote variants.
      */
 
-    // void testDisambiguateHetsSingleCombination() {
-    //     /* Test inputs where there is only one heterozygous combination (het_combos == 1).
-    //      * 1) 2 known haplotypes                     (patient1)  
-    //      * 2) 1 known, 1 novel                       (patient2)  
-    //      * 3) 2 known haplotypes OR 1 known, 1 novel (patient3)  
-    //      */
-	// 	drugRecommendationsTest(
-	// 		variants: [
-	// 			['patient1', null, 'rs1', null, null],
-	// 			['patient1', null, 'rs1', null, null],
-	// 		])
-	// 	assertJobTable('job_patient_gene_haplotype', [])
-	// 	assertJobTable('job_patient_novel_haplotype', [])
-    // }
+    static List generateGeneHaplotypeVariants(String geneName, List snpIds, Map haplotypes) {
+        Row.asList(Row.flatten(
+            haplotypes.collect { haplotypeName, alleles ->
+                [snpIds, alleles].transpose().collect { snpId, allele ->
+                    [geneName, haplotypeName, snpId, allele]
+                }
+            }
+        ))
+    }
+
+    /* E.g.
+     * patientVariants = [
+     *     patient1: [
+     *         rs1: 'AT',
+     *         rs2: 'CG',
+     *     ],
+     *     patient2: [
+     *         rs1: 'A',
+     *     ]
+     * ]
+     *
+     * Returns: [
+     *     ['patient1', null, 'rs1', 'A', 'het'],
+     *     ['patient1', null, 'rs1', 'T', 'het'],
+     *     ['patient1', null, 'rs2', 'C', 'het'],
+     *     ['patient1', null, 'rs2', 'G', 'het'],
+     *     ['patient1', 'A', 'rs1', 'A', 'hom'],
+     *     ['patient1', 'B', 'rs1', 'A', 'hom'],
+     * ]
+     *
+     */
+    static List generatePatientVariants(Map patientVariants) {
+        Row.asList(Row.flatten(Row.flatten(
+            patientVariants.collect { patientId, variants ->
+                variants.collect { snpId, alleleStr ->
+                    def zygosity
+                    def physicalChromosomes
+                    def alleles
+                    if (alleleStr.length() == 1) {
+                        zygosity = 'hom'
+                        physicalChromosomes = ['A', 'B']
+                        alleles = alleleStr.collect() * 2
+                    } else {
+                        assert alleleStr.length() == 2
+                        zygosity = 'het'
+                        physicalChromosomes = [null] * 2
+                        alleles = alleleStr.collect()
+                    }
+                    [physicalChromosomes, alleles].transpose().collect { physicalChromosome, allele ->
+                        [patientId, physicalChromosome, snpId, allele, zygosity]
+                    }
+                }
+            }
+        )))
+    }
+
+    void testDisambiguateHetsSingleCombination() {
+        /* Test inputs where there is only one heterozygous combination (het_combos == 1).
+         * patient1: 2 known haplotypes, 2 combinations
+         * patient2: 1 known, 1 novel
+         * patient3: 2 known haplotypes OR 1 known, 1 novel
+         */
+        def sampleData = [
+            drug_recommendation: [
+                columns:['id', 'recommendation'],
+                rows:[
+                    [1, 'drug'],
+                    [2, 'some drug'],
+                    [3, 'no drug'],
+                ],
+            ],
+            gene_phenotype_drug_recommendation: [
+                ['g1', 'homozygote normal', 1],
+                ['g1', 'heterozygote', 2],
+                ['g1', "nonfunctional", 3],
+            ],
+            gene_haplotype_variant: generateGeneHaplotypeVariants(
+                'g1',
+                ['rs1', 'rs2', 'rs3'],
+                [
+                '*1': ['A', 'C', 'T'],
+                '*2': ['A', 'G', 'A'],
+                '*3': ['T', 'G', 'T'],
+                '*4': ['G', 'C', 'A'],
+                ],
+            ),
+            genotype_phenotype: [
+                ['g1', '*1', '*2', 'homozygote normal'],
+                ['g1', '*1', '*3', 'homozygote normal'],
+                ['g1', '*3', '*4', 'heterozygote'],
+                ['g1', '*2', '*2', "nonfunctional"],
+            ],
+            genotype_drug_recommendation: [
+                ['g1', '*1', '*1', 1],
+            ],
+        ]
+        insertSampleData(sampleData)
+
+		drugRecommendationsTest(
+			variants: generatePatientVariants(
+                patient1: [
+                    rs2: 'CG',
+                    rs3: 'TA',
+                ],
+                patient2: [
+                    rs1: 'CT',
+                ],
+                patient3: [
+                    rs1: 'AT',
+                    rs2: 'CG',
+                ],
+            ))
+		assertJobTable('job_patient_genotype', [
+			[1, 'patient1', 'g1', '*1', '*2'],
+			[1, 'patient1', 'g1', '*3', '*4'],
+
+			[1, 'patient2', 'g1', '*3', null],
+
+			[1, 'patient3', 'g1', '*1', '*3'],
+			[1, 'patient3', 'g1', '*2', null],
+        ])
+		// assertJobTable('job_patient_novel_haplotype', [])
+    }
 
 }

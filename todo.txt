@@ -412,11 +412,8 @@ run aaron's PGX file
   - 1 known, 1 novel, 2 combinations
   - 2 known haplotypes OR 1 known 1 novel, 1 combination each
 
-- ** make old tests incorporate het_combo / het_combos (if it makes sense to...)
 - fix report to show het_combo stuff
 - add wui stuff (het_combo, new hetVariant table, make the graph look ok)
-- ** create new tests to test new behaviour
-- stop assigning a physical chromosome for het-variants inside the variant table....?
+  - add het_combo / het_combos to GeneHaplotypeMatrix.novelHaplotypeReport
+  - add het_combo / het_combos to report functions (add het_combo to join fields for job_patient tables, except for the variant table)
 - re-run aaron's files
-
-- convert failing test into disambiguateHetsTest

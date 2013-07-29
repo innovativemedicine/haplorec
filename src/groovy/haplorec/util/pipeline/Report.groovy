@@ -38,7 +38,7 @@ public class Report {
         report(sql,
             fillWith: kwargs.fillWith,
             select: [
-                ( kwargs.phenotypeDrugRecommendation ) : ['patient_id', 'drug_recommendation_id'],
+                ( kwargs.phenotypeDrugRecommendation ) : ['patient_id', 'drug_recommendation_id', 'het_combo', 'het_combos'],
                 drug_recommendation                    : ['drug_name', 'recommendation'],
                 ( kwargs.genePhenotype )               : ['gene_name', 'phenotype_name'],
                 ( kwargs.genotype )                    : ['haplotype_name1', 'haplotype_name2'],
@@ -48,20 +48,22 @@ public class Report {
             join: [
                 drug_recommendation: [ "left join", "on (jppdr.drug_recommendation_id = dr.id)" ],
                 gene_phenotype_drug_recommendation: [ "left join", "using (drug_recommendation_id)" ],
-                ( kwargs.genePhenotype )           : ["left join", "using (job_id, patient_id, gene_name, phenotype_name) "],
+                ( kwargs.genePhenotype )           : ["left join", "using (job_id, patient_id, gene_name, phenotype_name, het_combo) "],
                 genotype_phenotype                 : ["left join", "using (gene_name, phenotype_name)"],
-                ( kwargs.genotype ): [ "left join", "using (job_id, patient_id, haplotype_name1, haplotype_name2)" ],
+                ( kwargs.genotype ): [ "left join", "using (job_id, patient_id, haplotype_name1, haplotype_name2, het_combo)" ],
                 ( kwargs.geneHaplotype ): [ "left join", """\
                     on (
                         jpgh.job_id = jpg.job_id and
                         jpgh.patient_id = jpg.patient_id and
                         jpgh.gene_name = jpg.gene_name and
-                        jpgh.haplotype_name = jpg.haplotype_name1
+                        jpgh.haplotype_name = jpg.haplotype_name1 and
+                        jpgh.het_combo = jpg.het_combo
                        ) or (
                         jpgh.job_id = jpg.job_id and
                         jpgh.patient_id = jpg.patient_id and
                         jpgh.gene_name = jpg.gene_name and
-                        jpgh.haplotype_name = jpg.haplotype_name2
+                        jpgh.haplotype_name = jpg.haplotype_name2 and
+                        jpgh.het_combo = jpg.het_combo
                        )""" ],
                 gene_haplotype_variant: [ "left join",  """\
                     on ghv.gene_name = jpgh.gene_name and 
@@ -94,7 +96,7 @@ public class Report {
         report(sql,
             fillWith: kwargs.fillWith,
             select: [
-                ( kwargs.genotypeDrugRecommendation ) : ['patient_id', 'drug_recommendation_id'],
+                ( kwargs.genotypeDrugRecommendation ) : ['patient_id', 'drug_recommendation_id', 'het_combo', 'het_combos'],
                 drug_recommendation                   : ['drug_name', 'recommendation'],
                 ( kwargs.genotype )                   : ['gene_name', 'haplotype_name1', 'haplotype_name2'],
                 ( kwargs.geneHaplotype )              : ['haplotype_name'],
@@ -103,18 +105,20 @@ public class Report {
             join: [
                 drug_recommendation: [ "left join", "on (jpgdr.drug_recommendation_id = dr.id)" ],
                 genotype_drug_recommendation: [ "left join", "using (drug_recommendation_id)" ],
-                ( kwargs.genotype ): [ "left join", "using (job_id, patient_id, haplotype_name1, haplotype_name2)" ],
+                ( kwargs.genotype ): [ "left join", "using (job_id, patient_id, haplotype_name1, haplotype_name2, het_combo)" ],
                 ( kwargs.geneHaplotype ): [ "left join", """\
                     on (
                         jpgh.job_id = jpg.job_id and
                         jpgh.patient_id = jpg.patient_id and
                         jpgh.gene_name = jpg.gene_name and
-                        jpgh.haplotype_name = jpg.haplotype_name1
+                        jpgh.haplotype_name = jpg.haplotype_name1 and
+                        jpgh.het_combo = jpg.het_combo
                        ) or (
                         jpgh.job_id = jpg.job_id and
                         jpgh.patient_id = jpg.patient_id and
                         jpgh.gene_name = jpg.gene_name and
-                        jpgh.haplotype_name = jpg.haplotype_name2
+                        jpgh.haplotype_name = jpg.haplotype_name2 and
+                        jpgh.het_combo = jpg.het_combo
                        )""" ],
                 gene_haplotype_variant: [ "left join",  """\
                     on ghv.gene_name = jpgh.gene_name and 
@@ -152,6 +156,8 @@ public class Report {
             HAPLOTYPE_NAME2 : 'HAPLOTYPE2',
             HAPLOTYPE_NAME  : 'HAPLOTYPE',
             SNP_ID          : 'RS#',
+            HET_COMBO       : 'HET_COMBO',
+            HET_COMBOS      : '#HET_COMBOS',
         ]
         Row.changeKeys(
             haplorec.util.sql.Report.condensedJoin(

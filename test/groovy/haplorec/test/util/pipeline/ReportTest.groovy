@@ -41,22 +41,25 @@ class ReportTest extends GroovyTestCase {
 
     static def generatePatientVariants(Map kwargs = [:], patientIds, variants) {
         if (kwargs.physicalChromosomes == null) { kwargs.physicalChromosomes = ['A', 'B'] }
+        if (kwargs.hetCombos == null) { kwargs.hetCombos = 1 }
         def xs = []
         patientIds.each { patientId ->
             kwargs.physicalChromosomes.each { physicalChromosome ->
-                def addVariants = { vars, zygosity ->
-                    vars.each { snpId, allele ->
-                        xs.add([patient_id: patientId, snp_id: snpId, allele: allele, physical_chromosome: physicalChromosome, zygosity: zygosity])
+                (1..kwargs.hetCombos).each { hetCombo ->
+                    def addVariants = { vars, zygosity ->
+                        vars.each { snpId, allele ->
+                            xs.add([patient_id: patientId, snp_id: snpId, allele: allele, physical_chromosome: physicalChromosome, het_combo: hetCombo, het_combos: kwargs.hetCombos, zygosity: zygosity])
+                        }
                     }
-                }
-                if (variants.containsKey('het')) {
-                    addVariants(variants.het, 'het')
-                }
-                if (variants.containsKey('hom')) {
-                    addVariants(variants.hom, 'hom')
-                }
-                if (!variants.containsKey('het') && !variants.containsKey('hom')) {
-                    addVariants(variants, null)
+                    if (variants.containsKey('het')) {
+                        addVariants(variants.het, 'het')
+                    }
+                    if (variants.containsKey('hom')) {
+                        addVariants(variants.hom, 'hom')
+                    }
+                    if (!variants.containsKey('het') && !variants.containsKey('hom')) {
+                        addVariants(variants, null)
+                    }
                 }
             }
         }
@@ -99,8 +102,8 @@ class ReportTest extends GroovyTestCase {
             ),
             null,
             [
-                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'A'), ['T', 'T', 'G', null, null, null]],
-                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'B'), ['T', 'T', 'G', null, null, null]],
+                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'A', hetCombo: 1, hetCombos: 1), ['T', 'T', 'G', null, null, null]],
+                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'B', hetCombo: 1, hetCombos: 1), ['T', 'T', 'G', null, null, null]],
             ])
     }
 
@@ -118,10 +121,10 @@ class ReportTest extends GroovyTestCase {
             ),
             null,
             [
-                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'A'), ['T', 'T', 'G', null, null, null]],
-                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'B'), ['T', 'T', 'G', null, null, null]],
-                [new NovelHaplotype(patientId: 'patient2', physicalChromosome: 'A'), ['T', 'T', 'G', null, null, null]],
-                [new NovelHaplotype(patientId: 'patient2', physicalChromosome: 'B'), ['T', 'T', 'G', null, null, null]],
+                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'A', hetCombo: 1, hetCombos: 1), ['T', 'T', 'G', null, null, null]],
+                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'B', hetCombo: 1, hetCombos: 1), ['T', 'T', 'G', null, null, null]],
+                [new NovelHaplotype(patientId: 'patient2', physicalChromosome: 'A', hetCombo: 1, hetCombos: 1), ['T', 'T', 'G', null, null, null]],
+                [new NovelHaplotype(patientId: 'patient2', physicalChromosome: 'B', hetCombo: 1, hetCombos: 1), ['T', 'T', 'G', null, null, null]],
             ])
     }
 
@@ -145,8 +148,8 @@ class ReportTest extends GroovyTestCase {
                 [new Haplotype(haplotypeName: 'A-968C_376G'),             ['C', 'C', 'G', 'C', 'G', 'G']],
                 [new Haplotype(haplotypeName: 'Mediterranean Haplotype'), ['C', 'T', 'A', 'C', 'A', 'A']],
 
-                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'A'), ['T', 'T', 'G', null, null, null]],
-                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'B'), ['T', 'T', 'G', null, null, null]],
+                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'A', hetCombo: 1, hetCombos: 1), ['T', 'T', 'G', null, null, null]],
+                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'B', hetCombo: 1, hetCombos: 1), ['T', 'T', 'G', null, null, null]],
             ])
     }
 
@@ -170,11 +173,11 @@ class ReportTest extends GroovyTestCase {
                 [new Haplotype(haplotypeName: 'A-968C_376G'),             ['C', 'C', 'G', 'C', 'G', 'G']],
                 [new Haplotype(haplotypeName: 'Mediterranean Haplotype'), ['C', 'T', 'A', 'C', 'A', 'A']],
 
-                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'A'), ['T', 'T', 'G', null, null, null]],
-                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'B'), ['T', 'T', 'G', null, null, null]],
+                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'A', hetCombo: 1, hetCombos: 1), ['T', 'T', 'G', null, null, null]],
+                [new NovelHaplotype(patientId: 'patient1', physicalChromosome: 'B', hetCombo: 1, hetCombos: 1), ['T', 'T', 'G', null, null, null]],
 
-                [new NovelHaplotype(patientId: 'patient2', physicalChromosome: 'A'), ['T', 'T', 'G', null, null, null]],
-                [new NovelHaplotype(patientId: 'patient2', physicalChromosome: 'B'), ['T', 'T', 'G', null, null, null]],
+                [new NovelHaplotype(patientId: 'patient2', physicalChromosome: 'A', hetCombo: 1, hetCombos: 1), ['T', 'T', 'G', null, null, null]],
+                [new NovelHaplotype(patientId: 'patient2', physicalChromosome: 'B', hetCombo: 1, hetCombos: 1), ['T', 'T', 'G', null, null, null]],
             ])
     }
 

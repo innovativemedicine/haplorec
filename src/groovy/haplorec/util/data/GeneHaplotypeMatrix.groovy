@@ -1,7 +1,7 @@
 package haplorec.util.data
 
-import haplorec.util.data.Sql
 import haplorec.util.Row
+import haplorec.util.pipeline.Pipeline
 
 import java.sql.Connection
 import groovy.transform.EqualsAndHashCode
@@ -12,42 +12,30 @@ class GeneHaplotypeMatrix {
     /* Return a GeneHaplotypeMatrix annotated with patientVariants for a particular kwargs.job_id.
      */
     static GeneHaplotypeMatrix novelHaplotypeMatrix(Map kwargs = [:], sql, jobId, geneName) {
-        if (kwargs.iterableManyTimes == null) { kwargs.iterableManyTimes = true }
-        def matrix
-        Sql.withConnection(sql) { connection -> 
-            def patientVariantsStmt = Sql.stmtIter(connection, """\
-                    |select snp_id, allele, patient_id, het_combo, het_combos, physical_chromosome
-                    |from ${kwargs.novelHaplotype}
-                    |join ${kwargs.variant} using (job_id, patient_id, physical_chromosome)
-                    |where job_id = ? and gene_name = ?
-                    |order by job_id, gene_name, patient_id, physical_chromosome, het_combo, snp_id
-                    |""".stripMargin(),
-                    cacheRows: kwargs.iterableManyTimes)
-            patientVariantsStmt.execute(jobId, geneName)
-            matrix = geneHaplotypeMatrix(kwargs, sql, connection, geneName, patientVariantsStmt)
-        }
-        return matrix
+        kwargs += Pipeline.tables()
+        def patientVariants = sql.rows("""\
+                |select snp_id, allele, patient_id, het_combo, het_combos, physical_chromosome
+                |from ${kwargs.novelHaplotype}
+                |join ${kwargs.variant} using (job_id, patient_id, physical_chromosome)
+                |where job_id = :job_id and gene_name = :gene_name
+                |order by job_id, gene_name, patient_id, physical_chromosome, het_combo, snp_id
+                |""".stripMargin(),
+                [job_id: jobId, gene_name: geneName])
+        return geneHaplotypeMatrix(kwargs, sql, geneName, patientVariants)
     }
     
     static GeneHaplotypeMatrix haplotypeMatrix(Map kwargs = [:], sql, geneName) {
-        if (kwargs.iterableManyTimes == null) { kwargs.iterableManyTimes = true }
-        def matrix
-        Sql.withConnection(sql) { connection -> 
-            matrix = geneHaplotypeMatrix(kwargs, sql, connection, geneName, null)
-        }
-        return matrix
+        return geneHaplotypeMatrix(kwargs, sql, geneName, null)
     }
 
-    private static GeneHaplotypeMatrix geneHaplotypeMatrix(Map kwargs = [:], sql, connection, geneName, patientVariants) {
-        if (kwargs.iterableManyTimes == null) { kwargs.iterableManyTimes = true }
-        def haplotypeVariantsStmt = Sql.stmtIter(connection, """
+    private static GeneHaplotypeMatrix geneHaplotypeMatrix(Map kwargs = [:], sql, geneName, patientVariants) {
+        def haplotypeVariants = sql.rows("""
                 |select haplotype_name, snp_id, allele
                 |from gene_haplotype_variant
-                |where gene_name = ?
+                |where gene_name = :gene_name
                 |order by gene_name, haplotype_name, snp_id
                 |""".stripMargin(),
-                cacheRows: kwargs.iterableManyTimes)
-        haplotypeVariantsStmt.execute(geneName)
+                [gene_name: geneName])
         return new GeneHaplotypeMatrix(
             geneName: geneName,
             snpIds: sql.rows("""
@@ -55,10 +43,11 @@ class GeneHaplotypeMatrix {
                 |from gene_snp 
                 |where gene_name = :gene_name 
                 |order by snp_id
-                |""".stripMargin(), [gene_name: geneName])
+                |""".stripMargin(), 
+                [gene_name: geneName])
                 .collect { it.snp_id } as Set,
             patientVariants: patientVariants,
-            haplotypeVariants: haplotypeVariantsStmt,
+            haplotypeVariants: haplotypeVariants,
         )
     }
 
@@ -73,15 +62,19 @@ class GeneHaplotypeMatrix {
     // ordered by those fields.
     def haplotypeVariants
 
-
     // (Allele, SnpID) -> { Haplotype }
     private Map<List, Set> VH
     // { Haplotype }
     private Set haplotypes
 
     String toString() {
+        def iterAsList = { iter ->
+            def xs = []
+            iter.each { xs.add(it) }
+            return xs
+        }
         def j = { xs -> xs.join(',' + String.format('%n')) }
-        "GeneHaplotypeMatrix(${j([geneName, snpIds, '[' + j(Sql.iterAsList(patientVariants)) + ']', '[' + j(Sql.iterAsList(haplotypeVariants)) + ']'])})"
+        "GeneHaplotypeMatrix(${j([geneName, snpIds, '[' + j(iterAsList(patientVariants)) + ']', '[' + j(iterAsList(haplotypeVariants)) + ']'])})"
     }
 
     @EqualsAndHashCode
@@ -95,8 +88,8 @@ class GeneHaplotypeMatrix {
     static class NovelHaplotype {
         String patientId
         String physicalChromosome
-        int hetCombo
-        int hetCombos
+        Integer hetCombo
+        Integer hetCombos
     }
 
     def each(Closure f) {

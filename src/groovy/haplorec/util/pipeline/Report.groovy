@@ -23,11 +23,7 @@ public class Report {
                     |""".stripMargin(), kwargs.sqlParams)
                     .collect { it.gene_name }
                 geneNames.each { geneName ->
-                    f(connection,
-                        GeneHaplotypeMatrix.novelHaplotypeReport(sql, sqlParams.job_id, geneName,
-                            iterableManyTimes: kwargs.iterableManyTimes,
-                        )
-                    )
+                    f(GeneHaplotypeMatrix.novelHaplotypeMatrix(sql, kwargs.sqlParams.job_id, geneName))
                 }
             }
         }

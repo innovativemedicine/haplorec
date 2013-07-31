@@ -256,7 +256,7 @@ class Sql {
         }
     }
 
-    private static def _(Map kwargs = [:], value) {
+    static def _(Map kwargs = [:], value) {
         if (kwargs.default == null) { kwargs.default = '' }
         if (!kwargs.containsKey('null')) { kwargs.null = null }
         if (kwargs.default == null) { kwargs.default = '' }

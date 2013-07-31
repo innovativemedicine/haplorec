@@ -3,6 +3,7 @@ package haplorec.util.pipeline
 import haplorec.util.Input
 import haplorec.util.Row
 import haplorec.util.Sql
+import static haplorec.util.Sql._ as _
 import haplorec.util.dependency.DependencyGraphBuilder
 import haplorec.util.dependency.Dependency
 import haplorec.util.data.GeneHaplotypeMatrix
@@ -38,12 +39,12 @@ public class Pipeline {
      */
     private static Set hetComboTables = [
         'hetVariant',
-        // 'genePhenotype',
+        'genePhenotype',
         'genotype',
         'geneHaplotype',
         'novelHaplotype',
-        // 'genotypeDrugRecommendation',
-        // 'phenotypeDrugRecommendation',
+        'genotypeDrugRecommendation',
+        'phenotypeDrugRecommendation',
     ] as Set
 	
     private static def setDefaultKwargs(Map kwargs) {
@@ -114,7 +115,7 @@ public class Pipeline {
 
     static def variantToGeneHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
-        def distinctGeneAndPatientSql = { variantsTable -> 
+        def distinctGeneAndPatientSql = { Map kws = [:], variantsTable -> 
             /* Select all (gene_name, patient_id) tuples where there exists at least one variant for 
              * that gene for that patient.
              *
@@ -125,7 +126,8 @@ public class Pipeline {
             |select distinct gene_name, patient_id
             |from ${variantsTable}
             |join gene_haplotype_variant using (snp_id)
-            |where ${variantsTable}.allele is not null and job_id = :job_id
+            |where ${variantsTable}.allele is not null and job_id = :job_id 
+            |${_(kws.where, return: { where -> "and $where" })}
             |""".stripMargin()
         }
         GeneHaplotypeMatrix ghm
@@ -137,7 +139,7 @@ public class Pipeline {
         }
         eachGeneWithPatients(sql,
             genePatientTuples: Sql.selectAs(sql, """\
-                |${distinctGeneAndPatientSql(kwargs.variant)}
+                |${distinctGeneAndPatientSql(kwargs.variant, where: "zygosity != 'het'")}
                 |union distinct
                 |${distinctGeneAndPatientSql(kwargs.hetVariant)}
                 |""".stripMargin(), null,
@@ -186,11 +188,11 @@ public class Pipeline {
                     (
                         hetVariantCombos[physicalChromosome] ?: 
                         /* There are only homozygous variants; no heterozygous variants.  
-                         * Just use het_combo == null and an empty list for hetVariants.
+                         * Just use het_combo == het_combos == 1 and an empty list for hetVariants.
                          */
-                        [ ( null ) : [] ]
+                        [ ( 1 ) : [] ]
                     ).each { hetCombo, hetVariants -> 
-                        def hetCombos = hetVariantCombos[physicalChromosome] != null ? hetVariants[0].het_combos : null
+                        def hetCombos = hetVariantCombos[physicalChromosome] != null ? hetVariants[0].het_combos : 1
                         /* Find the haplotypes on a particular physical chromosome of a particular 
                          * heterozygous combination.
                          */
@@ -458,7 +460,7 @@ public class Pipeline {
             if ((sql.rows("select count(*) as count from ${tbl.job}".toString()))[0]['count'] == 0) {
                 throw new IllegalArgumentException("No such job with job_id ${kwargs.jobId}")
             }
-            jobTables.each { _, jobTable ->
+            jobTables.each { __, jobTable ->
                 sql.execute "delete from $jobTable where job_id = :jobId".toString(), kwargs
             }
         }

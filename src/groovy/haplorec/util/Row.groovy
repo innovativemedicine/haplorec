@@ -330,12 +330,34 @@ class Row {
         }
     }
 
+    /* Given an iterator over [x1, x2, ..., xn], return an iterator over [g(x1), g(x2), ..., g(xn)].
+     * i.e. your standard map function over an iterator instead of a list.
+     */
+    private static def map(iter, Closure g) {
+        return new Object() {
+            def each(Closure f) {
+                iter.each { x ->
+                    f(g(x))
+                }
+            }
+        }
+    }
+
     static List asList(iter) {
         List xs = []
         iter.each { x ->
             xs.add(x)
         }
         return xs
+    }
+
+    /** Same behaviour as groovy's Collect.inject, but it works on an iterable.
+     */
+    private static def inject(iter, m, Closure f) {
+        iter.each { x ->
+            m = f(m, x)
+        }
+        return m
     }
 
 }

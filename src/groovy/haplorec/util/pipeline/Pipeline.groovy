@@ -194,6 +194,7 @@ public class Pipeline {
      */
     static def variantToGeneHaplotypeAndNovelHaplotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
+
         def distinctGeneAndPatientSql = { Map kws = [:], variantsTable -> 
             /* Select all (gene_name, patient_id) tuples where there exists at least one variant for 
              * that gene for that patient.
@@ -209,31 +210,27 @@ public class Pipeline {
             |${_(kws.where, return: { where -> "and $where" })}
             |""".stripMargin()
         }
-        GeneHaplotypeMatrix ghm
-        def geneHaplotypeRows = []
-        def novelHaplotypeRows = []
-        def insertRows = { ->
-            Sql.insert(sql, kwargs.geneHaplotype, null, geneHaplotypeRows)
-            Sql.insert(sql, kwargs.novelHaplotype, null, novelHaplotypeRows)
-        }
-        eachGeneWithPatients(sql,
-            genePatientTuples: Sql.selectAs(sql, """\
-                |${distinctGeneAndPatientSql(kwargs.variant, where: "zygosity != 'het'")}
-                |union distinct
-                |${distinctGeneAndPatientSql(kwargs.hetVariant)}
-                |""".stripMargin(), null,
-                sqlParams: kwargs.sqlParams,
-                saveAs: 'rows'),
-            eachGene: { geneName ->
-                /* Insert rows generated from the last geneName (this will do nothing for the first 
-                 * iteration).
-                 */
-                insertRows()
-                ghm = GeneHaplotypeMatrix.haplotypeMatrix(sql, geneName)
-                geneHaplotypeRows = []
-                novelHaplotypeRows = []
-            },
-            eachPatient: { geneName, patientId ->
+        /* GeneName -> { PatientID }
+         */
+        def geneToPatientId = tuplesToMapOfSets(
+            Row.map(
+                Sql.selectAs(sql, """\
+                    |${distinctGeneAndPatientSql(kwargs.variant, where: "zygosity != 'het'")}
+                    |union distinct
+                    |${distinctGeneAndPatientSql(kwargs.hetVariant)}
+                    |""".stripMargin(), null,
+                    sqlParams: kwargs.sqlParams,
+                    saveAs: 'rows')
+            ) { row -> 
+                [row.gene_name, row.patient_id] 
+            }
+        )
+
+        geneToPatientId.keySet().each { geneName ->
+            GeneHaplotypeMatrix ghm = GeneHaplotypeMatrix.haplotypeMatrix(sql, geneName)
+            List geneHaplotypeRows = []
+            List novelHaplotypeRows = []
+            geneToPatientId[geneName].each { patientId ->
                 def sqlParams = kwargs.sqlParams + [gene_name: geneName, patient_id: patientId]
                 // physical_chromosome -> [homozygous variants]
                 def homVars = Sql.selectAs(sql, """\
@@ -306,12 +303,13 @@ public class Pipeline {
                         }
                     }
                 }
-            },
-            sqlParams: kwargs.sqlParams,
-        )
-        /* Insert rows generated from the final geneName.
-         */
-        insertRows()
+            }
+            /* Insert rows generated from the final geneName.
+            */
+            Sql.insert(sql, kwargs.geneHaplotype, null, geneHaplotypeRows)
+            Sql.insert(sql, kwargs.novelHaplotype, null, novelHaplotypeRows)
+        }
+
     }
 
     /** Populate hetVariant from variant by running Algorithm.disambiguateHets for each patient and 
@@ -337,20 +335,27 @@ public class Pipeline {
      *                 het_combo += 1
      */
     static def variantToHetVariant(Map kwargs = [:], groovy.sql.Sql sql) {
-        GeneHaplotypeMatrix ghm
-        eachGeneWithPatients(sql,
-            genePatientTuples: Sql.selectAs(sql, """\
-                |select distinct gene_name, patient_id
-                |from ${kwargs.variant}
-                |join gene_haplotype_variant using (snp_id)
-                |where zygosity = 'het' and job_id = :job_id
-                |""".stripMargin(), null,
-                sqlParams: kwargs.sqlParams,
-                saveAs: 'rows'),
-            eachGene: { geneName ->
-                ghm = GeneHaplotypeMatrix.haplotypeMatrix(sql, geneName)
-            },
-            eachPatient: { geneName, patientId ->
+
+        /* GeneName -> { PatientID }
+         */
+        def geneToPatientId = tuplesToMapOfSets(
+            Row.map(
+                Sql.selectAs(sql, """\
+                    |select distinct gene_name, patient_id
+                    |from ${kwargs.variant}
+                    |join gene_haplotype_variant using (snp_id)
+                    |where zygosity = 'het' and job_id = :job_id
+                    |""".stripMargin(), null,
+                    sqlParams: kwargs.sqlParams,
+                    saveAs: 'rows')
+            ) { row -> 
+                [row.gene_name, row.patient_id] 
+            }
+        )
+
+        geneToPatientId.keySet().each { geneName ->
+            GeneHaplotypeMatrix ghm = GeneHaplotypeMatrix.haplotypeMatrix(sql, geneName)
+            geneToPatientId[geneName].each { patientId ->
                 def sqlParams = kwargs.sqlParams + [gene_name: geneName, patient_id: patientId]
                 def combos = Algorithm.disambiguateHets(
                     ghm, 
@@ -388,22 +393,18 @@ public class Pipeline {
 					 */
 					Sql.insert(sql, kwargs.hetVariant, columns, Row.flatten(Row.flatten(combos.values())))
 				}
-            },
-            sqlParams: kwargs.sqlParams,
-        )
+            }
+        }
+
     }
 
-    private static def eachGeneWithPatients(Map kwargs = [:], groovy.sql.Sql sql) {
-        // GeneName -> { PatientID }
-        def geneToPatientId = kwargs.genePatientTuples.inject([:]) { m, row ->
-            m.get(row.gene_name, [] as Set).add(row.patient_id)
+    /** Given an iterable of tuples like [[x, y1], [x, y2]], return a map like [x: { y1, y2 }].
+     */
+    private static def tuplesToMapOfSets(tuples) {
+        Row.inject(tuples, [:]) { m, pair ->
+            def (x, y) = pair
+            m.get(x, [] as Set).add(y)
             return m
-        }
-        geneToPatientId.keySet().each { geneName ->
-            kwargs.eachGene(geneName)
-            geneToPatientId[geneName].each { patientId ->
-                kwargs.eachPatient(geneName, patientId)
-            }
         }
     }
 
@@ -686,18 +687,4 @@ public class Pipeline {
         }
     }
 
-    /* Given an iterator over [x1, x2, ..., xn], return an iterator over [g(x1), g(x2), ..., g(xn)].
-     * i.e. your standard map function over an iterator instead of a list.
-     */
-    private static def map(iter, Closure g) {
-        return new Object() {
-            def each(Closure f) {
-                iter.each { x ->
-                    f(g(x))
-                }
-            }
-        }
-    }
-
-    
 }

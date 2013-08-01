@@ -57,11 +57,18 @@ public class DBTest extends GroovyTestCase {
 
     def select(sql, table, columns) {
         def hashRowsToListRows = { rows, cols -> 
-            rows.collect { r -> 
-                cols.collect { r[it] } 
+            rows.collect { row -> 
+                if (cols == null || cols.size() == 0) {
+                    row.values() as List
+                } else {
+                    cols.collect { row[it] } 
+                }
             } 
         }
-        return hashRowsToListRows(sql.rows("select ${columns.join(', ')} from $table".toString()), columns)
+        String columnStr = (columns != null && columns.size() > 0) ?
+            columns.join(', ') :
+            '*'
+        return hashRowsToListRows(sql.rows("select $columnStr from $table".toString()), columns)
     }
 	
 	def selectCount(groovy.sql.Sql sql, table) {

@@ -1,3 +1,4 @@
 bin/
 .settings/
 *.pyc
+/src/sql/mysql/haplorec.sql

@@ -335,15 +335,10 @@ class Sql {
 
         File infile = File.createTempFile("${table}_table", '.tsv')
         try {
-            Integer rowSize
+            int numRows = 0
             infile.withPrintWriter() { w ->
                 rows.each { row ->
-                    if (rowSize == null) {
-                        /* This will happen on the first iteration.
-                         */
-                        assert row instanceof Collection || row instanceof Map
-                        rowSize = row.size()
-                    }
+                    numRows += 1
                     if (columns == null && row instanceof LinkedHashMap) {
                         /* This will happen on the first iteration.
                          */
@@ -363,13 +358,18 @@ class Sql {
                     )
                 }
             }
-            sql.execute "load data local infile :infile into table ${table}${(columns.size() > 0) ? "(${columns.join(', ')})" : ''}", [infile: infile.absolutePath]
+            if (numRows > 0) {
+                String columnStr = (columns != null && columns.size() > 0) ?
+                    '(' + columns.join(', ') + ')' :
+                    ''
+                sql.execute "load data local infile :infile into table ${table}${columnStr}", [infile: infile.absolutePath]
+            }
         } finally {
             infile.delete()
         } 
 
         // NOTE: this batch insert thing is slow.
-        // String stmt = "insert into ${table}${(columns.size() > 0) ? "(${columns.join(', ')})" : ''} values (${qmarks(rowSize)})"
+        // String stmt = "insert into ${table}${(columns.size() > 0) ? "(${columns.join(', ')})" : ''} values (${qmarks(numCols)})"
         // 
         // sql.withBatch(stmt) { ps ->
         //     rows.each { r -> 

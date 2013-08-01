@@ -3,6 +3,7 @@ package haplorec.test.util
 import java.util.Map;
 
 import haplorec.util.Sql
+import haplorec.util.Row
 
 import groovy.lang.Closure;
 import groovy.util.GroovyTestCase
@@ -509,5 +510,63 @@ public class SqlTest extends DBTest {
 			""",
 			values: ['somestring':'somevalue'])
 	}
+
+    def insertTest(String createTableStmt, groovy.sql.Sql sql, table, columns, rows) {
+        sql.execute createTableStmt
+        List expect = []
+        def rowsWrapper = new Object() {
+            def each(Closure f) {
+                rows.each { row ->
+                    expect.add(row)
+                    f(row)
+                }
+            }
+        }
+        Sql.insert(sql, table, columns, rowsWrapper)
+        def got = select(sql, table, columns)
+        assert expect == got
+    }
+
+    void testInsertEmptyIterWithColumns() {
+        insertTest(
+            "create table T(x integer)",
+            sql,
+            'T',
+            ['x'],
+            new Object() {
+                def each(Closure f) {
+                    // empty
+                }
+            },
+        )
+    }
+
+    void testInsertEmptyIterWithoutColumns() {
+        insertTest(
+            "create table T(x integer)",
+            sql,
+            'T',
+            null,
+            new Object() {
+                def each(Closure f) {
+                    // empty
+                }
+            },
+        )
+    }
+
+    void testInsertListIterWithoutColumns() {
+        insertTest(
+            "create table T(x integer)",
+            sql,
+            'T',
+            null,
+            new Object() {
+                def each(Closure f) {
+                    [[1], [2]].each(f)
+                }
+            },
+        )
+    }
 
 }

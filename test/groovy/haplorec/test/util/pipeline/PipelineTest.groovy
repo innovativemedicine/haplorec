@@ -54,8 +54,8 @@ public class PipelineTest extends DBTest {
         tearDownDB(TEST_DB, sql)
     }
 
-	def drugRecommendationsTest(Map kwargs = [:]) {
-		Pipeline.drugRecommendations(kwargs, sql)
+	def runJobTest(Map kwargs = [:]) {
+		Pipeline.runJob(kwargs, sql)
 	}
 
     def insertSampleData(sampleData) {
@@ -128,7 +128,7 @@ public class PipelineTest extends DBTest {
          * call involved in the snp_id's required to resolve haplotypes for a gene (i.e. an 
          * umambiguous association of variations on physical chromosomes).
          */
-        drugRecommendationsTest(
+        runJobTest(
 			variants: [
                 ['patient1', 'A', 'rs1', 'A', 'hom'],
                 ['patient1', 'B', 'rs1', 'A', 'hom'],
@@ -250,7 +250,7 @@ public class PipelineTest extends DBTest {
         ]
         insertSampleData(sampleData)
 
-		drugRecommendationsTest(
+		runJobTest(
 			variants: "test/in/2_samples.txt")
 		
 		// TODO: assert stuff, possibly the variants table itself
@@ -292,7 +292,7 @@ public class PipelineTest extends DBTest {
         /* A job with a single patient with snps resolve to a *1/*1 genotype, a homozygote normal 
          * phenotype, and a 'drug' recommendation
          */
-		drugRecommendationsTest(
+		runJobTest(
 			variants: [
 				// TODO: i think select disinct is messing up selectWhereEitherSetContains for this testcase; figure out how to work around that
 				['patient1', 'A', 'rs1', 'A', 'hom'],
@@ -318,7 +318,7 @@ public class PipelineTest extends DBTest {
          * independent (the results of the first job are still present), and that we can handle 
          * multiple patients.
          */
-        drugRecommendationsTest(
+        runJobTest(
 			variants: [
 				['patient2', 'A', 'rs1', 'A', 'hom'],
 				['patient2', 'A', 'rs2', 'G', 'hom'],
@@ -390,7 +390,7 @@ public class PipelineTest extends DBTest {
         ]
         insertSampleData(sampleData)
 
-        drugRecommendationsTest(
+        runJobTest(
             variants: [
                 ['patient1', 'A', 'rs1', 'A', 'hom'],
                 ['patient1', 'B', 'rs1', 'A', 'hom'],
@@ -432,7 +432,7 @@ public class PipelineTest extends DBTest {
 	
 	void testDrugRecommendationsInputGenotypes() {
 		
-		drugRecommendationsTest(
+		runJobTest(
 			genotypes: [rowsAsStream([
 				PipelineInput.inputHeaders.genotype,
 				['patient1', 'g1', '*1', '*1'],
@@ -445,7 +445,7 @@ public class PipelineTest extends DBTest {
 	
 	void testDrugRecommendationsInputGenotypesWithoutHeader() {
 		
-		drugRecommendationsTest(
+		runJobTest(
 			genotypes: [rowsAsStream([
 				// without header
 				['patient1', 'g1', '*1', '*1'],
@@ -461,7 +461,7 @@ public class PipelineTest extends DBTest {
 		
 		// too few columns
 		msg = shouldFail(InvalidInputException) {
-			drugRecommendationsTest(
+			runJobTest(
 				genotypes: [rowsAsStream([
 					['patient1', 'g1', '*1'],
 				])])
@@ -472,7 +472,7 @@ public class PipelineTest extends DBTest {
 
 	void testDrugRecommendationsInputVariantsWithoutHeader() {
 		
-		drugRecommendationsTest(
+		runJobTest(
 			variants: [rowsAsStream([
 				['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr1_117098850', 'C', 'A.Conservative', '1063-117507', 'Automatic'],
 			])])
@@ -489,7 +489,7 @@ public class PipelineTest extends DBTest {
 
         // too few columns
         msg = shouldFail(InvalidInputException) {
-            drugRecommendationsTest(
+            runJobTest(
                 variants: [rowsAsStream([
                     PipelineInput.inputHeaders.variant,
                     ['RA_CCP_RXN1_TCC-P5-7+SickKidsP12_May2011', '1', '1', 'N02', 'chr1_117098850', 'CA', 'A.Conservative', '1063-117507', 'Automatic'],
@@ -515,7 +515,7 @@ public class PipelineTest extends DBTest {
         ]
         insertSampleData(sampleData)
 
-        drugRecommendationsTest(
+        runJobTest(
             variants: [
                 ['patient1', 'A', 'rs1', 'A', 'hom'],
                 ['patient1', 'B', 'rs1', 'A', 'hom'],
@@ -540,7 +540,7 @@ public class PipelineTest extends DBTest {
         ]
         insertSampleData(sampleData)
 
-        drugRecommendationsTest(
+        runJobTest(
             variants: [
                 ['patient1', 'A', 'rs1', 'A', 'hom'],
                 ['patient1', 'B', 'rs1', 'A', 'hom'],
@@ -566,7 +566,7 @@ public class PipelineTest extends DBTest {
         ]
         insertSampleData(sampleData)
 
-        drugRecommendationsTest(
+        runJobTest(
             variants: [
                 ['patient1', 'A', 'rs1', 'A', 'hom'],
                 ['patient1', 'B', 'rs1', 'A', 'hom'],
@@ -596,7 +596,7 @@ public class PipelineTest extends DBTest {
         ]
         insertSampleData(sampleData)
 
-        drugRecommendationsTest(
+        runJobTest(
             variants: [
                 ['patient1', 'A', 'rs1', 'A', 'hom'],
                 ['patient1', 'B', 'rs1', 'A', 'hom'],
@@ -630,7 +630,7 @@ public class PipelineTest extends DBTest {
         ]
         insertSampleData(sampleData)
 
-        drugRecommendationsTest(
+        runJobTest(
             genotypes: [
                 ['patient1', 'g1', '*1', '*1'],
                 ['patient1', 'g2', '*1', '*2'],
@@ -665,7 +665,7 @@ public class PipelineTest extends DBTest {
         ]
         insertSampleData(sampleData)
 
-        drugRecommendationsTest(
+        runJobTest(
             genotypes: [
                 ['patient1', 'g1', '*1', '*1'],
                 ['patient1', 'g2', '*1', '*2'],
@@ -701,7 +701,7 @@ public class PipelineTest extends DBTest {
         ]
         insertSampleData(sampleData)
 
-        drugRecommendationsTest(
+        runJobTest(
             genePhenotypes: [
                 ['patient1', 'g1', 'homozygote normal'],
                 ['patient1', 'g2', 'homozygote'],
@@ -734,7 +734,7 @@ public class PipelineTest extends DBTest {
         ]
         insertSampleData(sampleData)
 
-        drugRecommendationsTest(
+        runJobTest(
             genePhenotypes: [
                 ['patient1', 'g1', 'homozygote normal'],
                 ['patient1', 'g2', 'homozygote'],
@@ -762,7 +762,7 @@ public class PipelineTest extends DBTest {
         ]
         insertSampleData(sampleData)
 
-		drugRecommendationsTest(
+		runJobTest(
 			variants: [
                 ['patient1', 'A', 'rs1', 'T', 'hom'],
                 ['patient1', 'B', 'rs1', 'T', 'hom'],
@@ -794,7 +794,7 @@ public class PipelineTest extends DBTest {
 		]
 		insertSampleData(sampleData)
 
-		drugRecommendationsTest(
+		runJobTest(
 			variants: [
 				['patient1', 'A', 'rs1', 'T', 'hom'],
 				['patient1', 'B', 'rs1', 'T', 'hom'],
@@ -826,7 +826,7 @@ public class PipelineTest extends DBTest {
 		]
 		insertSampleData(sampleData)
 
-		drugRecommendationsTest(
+		runJobTest(
 			variants: [
 				['patient1', 'A', 'rs1', 'G', 'hom'],
 				['patient1', 'B', 'rs1', 'G', 'hom'],
@@ -854,7 +854,7 @@ public class PipelineTest extends DBTest {
 		]
 		insertSampleData(sampleData)
 
-		drugRecommendationsTest(
+		runJobTest(
 			variants: [
                 ['patient1', 'A', 'rs1', 'T', 'hom'],
                 ['patient1', 'B', 'rs1', 'T', 'hom'],
@@ -883,7 +883,7 @@ public class PipelineTest extends DBTest {
 		]
 		insertSampleData(sampleData)
 
-		drugRecommendationsTest(
+		runJobTest(
 			variants: [
 				['patient1', 'A', 'rs3', 'C', 'hom'],
 				['patient1', 'B', 'rs3', 'C', 'hom'],
@@ -909,7 +909,7 @@ public class PipelineTest extends DBTest {
 		]
 		insertSampleData(sampleData)
 
-		drugRecommendationsTest(
+		runJobTest(
 			variants: [
 				['patient1', null, 'rs1', null, null],
 				['patient1', null, 'rs1', null, null],
@@ -1020,7 +1020,7 @@ public class PipelineTest extends DBTest {
         ]
         insertSampleData(sampleData)
 
-		drugRecommendationsTest(
+		runJobTest(
 			variants: generatePatientVariants(
                 patient1: [
                     rs2: 'CG',

@@ -42,8 +42,8 @@ public class PipelineLoadTest extends DBTest {
         tearDownDB(TEST_DB, sql)
     }
 
-	def drugRecommendationsTest(Map kwargs = [:]) {
-		Pipeline.drugRecommendations(kwargs, sql)
+	def runJobTest(Map kwargs = [:]) {
+		Pipeline.runJob(kwargs, sql)
 	}
 
     def insertSampleData(sampleData) {
@@ -69,7 +69,7 @@ public class PipelineLoadTest extends DBTest {
         def variants = generateVariants(5000, 10)
         withSlowQueryLog(sql) {
             shouldRunWithin(seconds: 10) {
-                drugRecommendationsTest(variants: variants)
+                runJobTest(variants: variants)
             }
         }
     }

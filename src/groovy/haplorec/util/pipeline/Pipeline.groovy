@@ -11,7 +11,7 @@ import haplorec.util.pipeline.Algorithm
 
 /**
  * Defines the stages of the haplorec pipeline, and wires up the stages into a dependency graph so 
- * that they can be run on an input.
+ * that they can be run on input.
  *
  * Typical usage:
  * def (jobId, dependencies) = Pipeline.pipelineJob(sql)
@@ -70,6 +70,14 @@ public class Pipeline {
      * @param sql a connection to the haplorec database
      * @param kwargs.sqlParams.job_id the job_id to run this stage for
      * @param kwargs.{tableAlias} the SQL table to use for tableAlias
+     * @param kwargs.meta metadata about the columns for a given table alias.  For example
+     * kwargs.meta == [
+     *     variant: [
+     *         columns: [id, job_id, patient_id, physical_chromosome, snp_id, allele, zygosity], 
+     *         primaryKey: [id],
+     *     ],
+     *     ...
+     * ]
      */
 
     /** Add default keyword arguments to kwargs used by the stages.
@@ -88,15 +96,6 @@ public class Pipeline {
             setDefault(tableAlias, defaultTables[tableAlias]) 
         }
     }
-
-	/* Keyword Arguments:
-	 * 
-	 * tooManyHaplotypes: a Closure of type ( GeneName: String, [HaplotypeName: String] -> void )
-	 * which represents a list of haplotypes (that is, 
-	 * which processes genes for which more than 2 haplotypes were seen 
-	 * (i.e. our assumption that the gene has a biallelic genotype has failed).
-	 * default: ignore such cases
-	 */
 
     /** Populate genotype from geneHaplotype by grouping pairs of haplotype_name's with the same 
      * patient_id/gene_name/het_combo into haplotype_name1, haplotype_name2.
@@ -232,18 +231,20 @@ public class Pipeline {
             List novelHaplotypeRows = []
             geneToPatientId[geneName].each { patientId ->
                 def sqlParams = kwargs.sqlParams + [gene_name: geneName, patient_id: patientId]
-                // physical_chromosome -> [homozygous variants]
+                /* physical_chromosome -> [homozygous variants]
+                 */
                 def homVars = Sql.selectAs(sql, """\
                     |select *
                     |from ${kwargs.variant}
                     |join gene_snp using (snp_id)
                     |where zygosity = 'hom' and ${_eq(sqlParams)}
                     |order by physical_chromosome
-                    |""".stripMargin(),
-                    sqlParams: sqlParams, null,
+                    |""".stripMargin(), null,
+                    sqlParams: sqlParams,
                     saveAs: 'rows')
                     .groupBy { it.physical_chromosome }
-                // physical_chromosome -> ( het_combo -> [heterozygous variants] )
+                /* physical_chromosome -> ( het_combo -> [heterozygous variants] )
+                 */
                 def hetVariantCombos = Sql.selectAs(sql, """\
                     |select *
                     |from ${kwargs.hetVariant}
@@ -408,19 +409,26 @@ public class Pipeline {
         }
     }
 
-    static private def cleanup(groovy.sql.Sql sql, table, jobId) {
-        sql.execute "delete from $table where job_id = :job_id".toString(), [job_id: jobId]
-    }
-
+    /** Populate genotypeDrugRecommendation from genotype by inserting all 
+     * DrugRecommendation's where the mapping:
+     * { (GeneName, HaplotypeName, HaplotypeName) } -> DrugRecommendation
+     * defined by genotype_drug_recommendation is satisfied.
+     */
     static def genotypeToGenotypeDrugRecommendation(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
         return Sql.selectWhereSetContains(
             sql,
+            /* { (GeneName, HaplotypeName, HaplotypeName) } -> DrugRecommendation
+             */
             'genotype_drug_recommendation',
+            /* Job, Patient, { (GeneName, HaplotypeName, HaplotypeName) }
+             */
             kwargs.genotype,
             ['gene_name', 'haplotype_name1', 'haplotype_name2'],
             tableAGroupBy: ['drug_recommendation_id'],
             tableBGroupBy: ['job_id', 'patient_id', 'het_combo', 'het_combos'],
+            /* Job, Patient, DrugRecommendation
+             */
             select: jobPatientColumns(kwargs.meta, 'genotypeDrugRecommendation'),
             intoTable: kwargs.genotypeDrugRecommendation,
             saveAs: kwargs.saveAs, 
@@ -429,7 +437,10 @@ public class Pipeline {
         )
     }
 
-	// inputGenePhenotype = create table(gene_name, phenotype_name, index(gene_name, phenotype_name))
+    /** Populate genePhenotype from genotype by inserting all PhenotypeName's where the mapping:
+     * (GeneName, HaplotypeName, HaplotypeName) -> (GeneName, PhenotypeName)
+     * defined by genotype_phenotype is satisfied.
+     */
 	static def genotypeToGenePhenotype(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
 		return Sql.selectAs(sql, """\
@@ -445,19 +456,23 @@ public class Pipeline {
 		)
 	}
 
-    /* Convenience method; all the table's column names (except the id column).
+    /** Convenience method; all the table's column names (except the id column).
      */
     private static def jobPatientColumns(Map meta, tableAlias) {
         meta[tableAlias].columns.grep { it != 'id' }
     }
 
-	static def createVariant(Map kwargs = [:], groovy.sql.Sql sql) {
-		setDefaultKwargs(kwargs)
-		Sql.insert(sql, kwargs.variant, ['snp_id', 'allele'], kwargs.variants)
-	}
-
+    /** Construct the haplorec dependency graph, minus the rules for actually building the 
+     * dependencies.
+     * This is useful for extracting information about the graph (e.g. given a target, what are its 
+     * dependencies).
+     *
+     * Returns a tuple of:
+     * tbl: Table alias to SQL table name mapping (see defaultTables)
+     * dependencies: a Map from table aliases to haplorec.util.pipeline.Dependency's
+     */
     static def dependencyGraph(Map kwargs = [:]) {
-        def tbl = tables(kwargs)
+        def tbl = tables()
 
         def builder = new PipelineDependencyGraphBuilder()
         Map dependencies = [:]
@@ -508,13 +523,30 @@ public class Pipeline {
         return [tbl, dependencies]
     }
 
-    static def tables(Map kwargs = [:]) {
-        // default job_* tables
-        // dependency target -> sql table
+    /** Return a table alias to SQL table name mapping.
+     */
+    static def tables() {
 		def tbl = new LinkedHashMap(defaultTables)
         return tbl
     }
 
+    /** Perform the setup needed to run a pipeline job, then return a dependency graph (see 
+     * dependencyGraph) with all the rules needed to build the targets filled in, but don't run any 
+     * stages yet.
+     *
+     * Setup involves:
+     * 1) Either:
+     * - insert a new record into the job table
+     * Or:
+     * - delete the results of a previously run job if kwargs.jobId was provided (to ready job to 
+     *   be re-run).
+     *
+     * @param sql a connection to the haplorec database
+     * And:
+     * @param kwargs.jobId use this job_id in all the populated tables instead of 
+     * Or
+     * @param kwargs.jobName create a new job with this job_name 
+     */
     static def pipelineJob(Map kwargs = [:], groovy.sql.Sql sql) {
 		def tableKey = { defaultTable ->
 			defaultTable.replaceFirst(/^job_/,  "")
@@ -524,16 +556,14 @@ public class Pipeline {
         def (tbl, dependencies) = dependencyGraph(kwargs)
 
         if (kwargs.jobId == null) {
-            // Create a new job
-            List sqlParamsColumns = (kwargs.sqlParams?.keySet() ?: []) as List
-            def keys = Sql.sqlWithParams sql.&executeInsert, """\
-                insert into job(${sqlParamsColumns.collect { ":$it" }.join(', ')}) 
-                values(${(['?']*sqlParamsColumns.size()).join(', ')})""".toString(), 
-                kwargs.sqlParams
-                kwargs.jobId = keys[0][0]
+            /* Create a new job.
+             */
+            def keys = sql.executeInsert("insert into job(job_name) values(:jobName)", kwargs)
+            kwargs.jobId = keys[0][0]
         } else {
-            // Given an existing jobId, delete all job_* rows, then rerun the pipeline
-            if ((sql.rows("select count(*) as count from ${tbl.job}".toString()))[0]['count'] == 0) {
+            /* Given an existing jobId, delete all job_* rows, then rerun the pipeline.
+             */
+            if ((sql.rows("select count(*) as count from ${tbl.job} where job_id = :jobId".toString(), kwargs))[0]['count'] == 0) {
                 throw new IllegalArgumentException("No such job with job_id ${kwargs.jobId}")
             }
             stageTables.each { __, jobTable ->
@@ -545,12 +575,14 @@ public class Pipeline {
          * filtered or error checked), build a SQL table from that input by inserting it with a new 
          * jobId.
          */
-        def jobTableInsertColumns = stageTables.collect { it.key }.inject([:]) { m, alias ->
+        def jobTableInsertColumns = stageTables.keySet().inject([:]) { m, alias ->
             def table = tbl[alias]
-            m[alias] = Sql.tableColumns(sql, tbl[alias],
-                where: "column_key != 'PRI'")
-			m
+            m[alias] = Sql.tableColumns(sql, tbl[alias], where: "column_key != 'PRI'")
+			return m
         }
+        /* Given a table alias and raw input (i.e. any input argument accepted by pipelineInput), 
+         * insert the validated input into its associated table.
+         */
         def buildFromInput = { alias, rawInput ->
             def input = pipelineInput(alias, rawInput)
             def jobRowIter = new Object() {
@@ -581,33 +613,41 @@ public class Pipeline {
             }
             Sql.insert(sql, tbl[alias], null, jobRowIter)
         }
-        def pipelineKwargs = tbl + [
+        /* Setup the kwargs for all the pipeline stages (refer to Pipeline Stage Definitions).
+         */
+        def stageKwargs = tbl + [
             sqlParams: [
                 job_id: kwargs.jobId,
             ],
             meta: Sql.tblColumns(sql).inject([:]) { m, entry ->
                 def (table, meta) = [entry.key, entry.value]
-                m[tableToAlias[table]] = meta
+                if (tableToAlias.containsKey(table)) {
+                    /* If this test fails, it might be a table not needed for the pipeline 
+                     * input/output (e.g. job_status in haplorec-wui).
+                     */
+                    m[tableToAlias[table]] = meta
+                }
                 return m
             },
         ]
 
+        /* Add rules for building each target in the dependency graph (using whatever inputs were 
+         * specified in the arguments of Pipeline.pipelineJob).
+         */
         dependencies.genotypeDrugRecommendation.rule = { ->
-            genotypeToGenotypeDrugRecommendation(pipelineKwargs, sql)
+            genotypeToGenotypeDrugRecommendation(stageKwargs, sql)
         }
         dependencies.phenotypeDrugRecommendation.rule = { ->
-            genePhenotypeToPhenotypeDrugRecommendation(pipelineKwargs, sql)
+            genePhenotypeToPhenotypeDrugRecommendation(stageKwargs, sql)
         }
         dependencies.genotype.rule = { ->
-            /* TODO: specify a way of dealing with tooManyHaplotypes errors
-            */
-            geneHaplotypeToGenotype(pipelineKwargs, sql)
+            geneHaplotypeToGenotype(stageKwargs, sql)
         }
         dependencies.geneHaplotype.rule = { ->
-            variantToGeneHaplotypeAndNovelHaplotype(pipelineKwargs, sql)
+            variantToGeneHaplotypeAndNovelHaplotype(stageKwargs, sql)
         }
         dependencies.hetVariant.rule = { ->
-            variantToHetVariant(pipelineKwargs, sql)
+            variantToHetVariant(stageKwargs, sql)
         }
         dependencies.novelHaplotype.rule = { ->
             /* Do nothing, since it's already been done in variantToGeneHaplotypeAndNovelHaplotype.
@@ -619,7 +659,7 @@ public class Pipeline {
             }
         }
         dependencies.genePhenotype.rule = { ->
-            genotypeToGenePhenotype(pipelineKwargs, sql)
+            genotypeToGenePhenotype(stageKwargs, sql)
         }
 
         /* For datasets that are already provided, replace their rules with ones that insert their 
@@ -640,29 +680,64 @@ public class Pipeline {
         return [kwargs.jobId, dependencies]
     }
 	
-	static def drugRecommendations(Map kwargs = [:], groovy.sql.Sql sql) {
+    /** Perform the setup needed to run a pipeline job, then build all the targets in the graph.
+     * Returns the job_id of the job.
+     */
+	static def runJob(Map kwargs = [:], groovy.sql.Sql sql) {
         def (jobId, job) = pipelineJob(kwargs, sql)
-        // For datasets that are already provided, insert their rows into the approriate job_* table, and mark them as built
         buildAll(job)
         return jobId
 	}
 
-    static def buildAll(job) {
+    /** Given a pipeline job, build all the targets in the graph.
+     */
+    static def buildAll(Map<CharSequence, Dependency> job) {
         Set<Dependency> built = []
         buildAll(job, built)
     }
 
-    static def buildAll(job, built) {
-        job.novelHaplotype.build(built)
-        job.phenotypeDrugRecommendation.build(built)
-        job.genotypeDrugRecommendation.build(built)
+    /** Given a pipeline job, build all the targets in the graph, unless they've already been built, 
+     * as indicated by their presense in built. 
+     *
+     * built will be modified to contain all built targets. 
+     */
+    static def buildAll(Map<CharSequence, Dependency> job, Set<Dependency> built) {
+        Set<Dependency> targetsWithoutDependants = Dependency.dependants(job.values()).grep { entry ->
+            def (dependency, dependants) = [entry.key, entry.value]
+            /* Filter for the "end points" of the dependency graph.
+            */
+            dependants.size() == 0
+        }.collect { it.key }
+        targetsWithoutDependants.each { dependency ->
+            dependency.build(built)
+        }
     }
 	
-    /* Return an iterator over the pipeline input
+    /** Return an iterator over validated pipeline input if the input is from a stream or
+     * filehandle, or just return the input as-is.
+     *
+     * Input validation is handled in PipelineInput, but validation only occurs when input is from a 
+     * stream or a filehandle.
+     *
+     * @param tableAlias a table alias that can be used to determine which function to use from 
+     * PipelineInput to process the input to extract the fields we're actually going to store in the 
+     * database (e.g.  if tableAlias == 'variant', we'd return PipelineInput.variants(input)).
+     * @param input 
+     * input must conform to:
+     * an iterable (or List) of Lists l whose values l[i] correspond to the i-th declared column of 
+     * src/sql/mysql/haplorec.sql (minus 'job_id', and any other field not provided by the input 
+     * source).
+     * 
+     * Special cases (these are cases in which tableAlias is used):
+     * - if input is a String, treat it as a filepath and process it using a function from 
+     *   PipelineInput
+     * - if input a list of open filehandles, concatenate the result of processing each filehandle 
+     *   using a function from PipelineInput
      */
     private static def pipelineInput(tableAlias, input) {
         if (input instanceof List && input.size() > 0 && input[0] instanceof BufferedReader) {
-			// input is a filehandle
+			/* Input is a list of filehandles (e.g. from a form submission, or open files on this machine).
+             */
 			def tableReader = PipelineInput.tableAliasToTableReader(tableAlias)
             return new Object() {
                 def each(Closure f) {
@@ -674,16 +749,18 @@ public class Pipeline {
                 }
             }
         } else if (input instanceof Collection) {
-			// input is a list of rows of data to insert
+            /* Input is a list of rows conforming to @param input specification.
+             */
             return input
         } else if (input instanceof CharSequence) {
-            // input is a filename
+            /* Input is a filepath.
+             */
             def tableReader = PipelineInput.tableAliasToTableReader(tableAlias)
             return tableReader(input)
         } else {
-			// assume its iterable (i.e. defines .each)
+            /* Input is an iterable (i.e. defines .each) conforming to @param input specification.
+             */
 			return input
-            // throw new IllegalArgumentException("Invalid input for table ${tableAlias}; expected a list of rows or a filepath but saw ${input}")
         }
     }
 

@@ -89,4 +89,20 @@ class Dependency {
 		return kwargs.levels
 	}
 
+    /* Given a collection (it should really be a Set) of dependencies in a dependency graph, return 
+     * a map from Dependency d to it's dependants (i.e. { x | x.dependsOn contains d } ).
+     */
+    static Map<Dependency, Set<Dependency>> dependants(Collection<Dependency> dependencies) {
+        Map D = dependencies.inject([:]) { m, d ->
+            m[d] = [] as Set
+            return m
+        }
+        dependencies.each { dependant ->
+            dependant.dependsOn.each { dependency ->
+                D.get(dependency, [] as Set).add(dependant)
+            }
+        }
+        return D
+    }
+
 }

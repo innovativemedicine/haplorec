@@ -5,10 +5,15 @@ import haplorec.util.data.GeneHaplotypeMatrix
 import haplorec.util.data.Sql
 // import haplorec.util.sql.Report (we use this, but we can't import it due to conflicting names)
 
+/** Generate reports suitable for output to DSV format.
+ */
 public class Report {
 
-    /* Given a job_id, return an iterator over GeneHaplotypeMatrix's, 1 for each distinct gene identified in 
+    /** Given a job_id, return an iterator over GeneHaplotypeMatrix's, 1 for each distinct gene identified in 
      * novelHaplotype (for this job).
+     *
+     * @param sql a connection to the haplorec database
+     * @param kwargs.sqlParams.job_id a job_id
      */
     static def novelHaplotypeReport(Map kwargs = [:], groovy.sql.Sql sql) {
         kwargs += Pipeline.tables(kwargs)
@@ -29,6 +34,24 @@ public class Report {
         }
     }
 
+    /** Given a job_id, return a report showingevery phenotype-based drug recommendation was called.
+     * In particular, show:
+     * - the drug recommendation details                    (kwargs.phenotypeDrugRecommendation / drug_recommendation)  
+     * - the gene phenotypes that caused the recommendation (kwargs.genePhenotype) 
+     * - the genotype that caused each gene phenotype       (kwargs.genotype)      
+     * - the haplotypes that cause each genotype            (kwargs.geneHaplotype) 
+     * - the variants that caused each haplotype call       (kwargs.variant)       
+     * Hence, it's just one big join.  We also don't want to show repeated data for the same 
+     * patient_id, so we use Row.condensedJoin to filter out duplicate data (specified via 
+     * duplicateKey). 
+     *
+     * Returns:
+     * an iterable of maps, all containing the attributes in "select: [ ... ]" below, aliased using 
+     * aliases defined in Report.report(...).
+     *
+     * @param sql a connection to the haplorec database
+     * @param kwargs.sqlParams.job_id a job_id
+     */
     static def phenotypeDrugRecommendationReport(Map kwargs = [:], groovy.sql.Sql sql) {
         kwargs += Pipeline.tables(kwargs)
         report(sql,
@@ -75,18 +98,25 @@ public class Report {
             where: "jppdr.job_id = :job_id",
             sqlParams: kwargs.sqlParams,
             duplicateKey: [
-                // repeat drug recommendation details for different patients
+                /* Repeat drug recommendation details for different patients
+                 */
                 drug_recommendation : ['id', [ ( kwargs.phenotypeDrugRecommendation ) : ['job_id', 'patient_id'] ]],
-                // repeat phenotypes for different drug recommendations
+                /* Repeat phenotypes for different drug recommendations
+                 */
                 ( kwargs.genePhenotype ) : ['id', [ drug_recommendation : ['id'] ]],
-                // don't repeat a haplotype for the same patient
+                /* Don't repeat a haplotype for the same patient
+                 */
                 ( kwargs.geneHaplotype ) : ['job_id', 'patient_id', 'gene_name', 'haplotype_name'],
-                // repeat variants for the same patient but a different haplotype (but we don't 
-                // repeat variants with the same allele and snp_id but only a different zygosity)
-                ( kwargs.variant )       : ['job_id', 'patient_id', [ ( kwargs.geneHaplotype ) : [ 'gene_name', 'haplotype_name' ] ], 'allele', 'snp_id'],
+                /* Repeat variants for the same patient but a different haplotype (but we don't 
+                 * repeat variants with the same allele and snp_id but only a different zygosity)
+                 */
+                ( kwargs.variant ) : ['job_id', 'patient_id', [ ( kwargs.geneHaplotype ) : [ 'gene_name', 'haplotype_name' ] ], 'allele', 'snp_id'],
             ])
     }
 
+    /** Same idea as phenotypeDrugRecommendationReport, but starting from kwargs.genotypeDrugRecommendation 
+     * instead of kwargs.phenotypeDrugRecommendation.
+     */
     static def genotypeDrugRecommendationReport(Map kwargs = [:], groovy.sql.Sql sql) {
         kwargs += Pipeline.tables(kwargs)
         report(sql,
@@ -130,18 +160,24 @@ public class Report {
             where: "jpgdr.job_id = :job_id",
             sqlParams: kwargs.sqlParams,
             duplicateKey: [
-                // repeat drug recommendation details for different patients
+                /* Repeat drug recommendation details for different patients
+                 */
                 drug_recommendation : ['id', [ ( kwargs.genotypeDrugRecommendation ) : ['job_id', 'patient_id'] ]],
-                // repeat genotypes for different drug recommendations
+                /* Repeat genotypes for different drug recommendations
+                 */
                 ( kwargs.genotype ) : ['id', [ drug_recommendation : ['id'] ]],
-                // don't repeat a haplotype for the same patient
+                /* Don't repeat a haplotype for the same patient
+                 */
                 ( kwargs.geneHaplotype ) : ['job_id', 'patient_id', 'gene_name', 'haplotype_name'],
-                // repeat variants for the same patient but a different haplotype (but we don't 
-                // repeat variants with the same allele and snp_id but only a different zygosity)
-                ( kwargs.variant )       : ['job_id', 'patient_id', [ ( kwargs.geneHaplotype ) : [ 'gene_name', 'haplotype_name' ] ], 'allele', 'snp_id'],
+                /* Repeat variants for the same patient but a different haplotype (but we don't 
+                 * repeat variants with the same allele and snp_id but only a different zygosity)
+                 */
+                ( kwargs.variant ): ['job_id', 'patient_id', [ ( kwargs.geneHaplotype ) : [ 'gene_name', 'haplotype_name' ] ], 'allele', 'snp_id'],
             ])
     }
 
+    /** Replace {table}.{field} names from MySQL with user-friendlier aliases.
+     */
     private static def report(Map kwargs = [:], groovy.sql.Sql sql) {
         Map aliases = [
             PATIENT_ID      : 'SAMPLE_ID',

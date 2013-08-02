@@ -3,9 +3,15 @@ package haplorec.util.pipeline
 import groovy.lang.Closure;
 import haplorec.util.Input
 
+/** Functions for creating iterables over raw pipeline input from an input stream / filepath.
+ * These functions return iterators that conform to the "input" parameter of Pipeline.pipelineInput.
+ */
 public class PipelineInput {
-    // if we see the header, skip it, o/w assume its a row
+    /* If we don't see a header as the first line of input, treat it is a valid line.
+     */
     static final Boolean defaultRequireHeader = false
+    /* Headers to expect as the first line.
+     */
     static final Map inputHeaders = [
         variant       : ['PLATE', 'EXPERIMENT', 'CHIP', 'WELL_POSITION', 'ASSAY_ID', 'GENOTYPE_ID', 'DESCRIPTION', 'SAMPLE_ID', 'ENTRY_OPERATOR'],
         genePhenotype : ['SAMPLE_ID', 'GENE', 'PHENOTYPE'],
@@ -13,11 +19,16 @@ public class PipelineInput {
         geneHaplotype : ['SAMPLE_ID', 'GENE', 'HAPLOTYPE'],
     ]
 
+    /* Aliases of tables we allow input for.
+     */
     static final Set inputTables = inputHeaders.keySet()
 
-    /* Given a tableAlias, return a function of the type (Map kwargs = [:], fileOrStream) -> iterator that 
-     * returns an row iterator over a file or input stream (kwargs are the same as those defined in 
-     * Input.dsv).  This is just a wrapper over Input.dsv.
+    /* Given a tableAlias, return a function of the type (Map kwargs = [:], fileOrStream) -> 
+     * iterator that returns an row iterator over a file or input stream (kwargs are the same as 
+     * those defined in Input.dsv).
+     *
+     * Checks for the existence of a function PipelineInput.${tableAlias} + 's' (see Table Specific 
+     * Readers), otherwise returns defaultReader.
      */
     static def tableAliasToTableReader(String tableAlias) {
         def tableReader = "${tableAlias}s"
@@ -32,7 +43,8 @@ public class PipelineInput {
 		}
     }
 	
-    /* Default table reader.
+    /* Default table reader. Checks for the inputHeader for this tableAlias, skips it (or throws 
+     * InvalidInputException if it doesn't find it), then return the data as-is.
      * (NOTE: you need to define inputHeaders for the tableAlias)
      */
 	static def defaultReader(String tableAlias) {
@@ -50,8 +62,10 @@ public class PipelineInput {
         }
 	}
 
-    /* Table specific iterators  
-     * (NOTE: the function name must be the table alias plus an 's' to be recognized by tableAliasToTableReader) 
+    /** Table Specific Readers.
+     * =============================================================================================
+     * Readers are named like ${tableAlias} + 's'.  For example the 'variant' table uses the 
+     * 'variants' reader.
      */
 
 	static def variants(Map kwargs = [:], fileOrStream) {
@@ -60,11 +74,15 @@ public class PipelineInput {
         def iter = Input.dsv(kwargs + [
             header: inputHeaders.variant,
             requireHeader: defaultRequireHeader,
+            /* Ignore all fields but these (correspond to snpId, allelesStr, patientId).
+             */
             fields: ['ASSAY_ID', 'GENOTYPE_ID', 'SAMPLE_ID'],
             asList: false,
         ], fileOrStream)
         return new Object() {
             def each(Closure f) {
+                /* Add physical chromosome.
+                 */
                 def chromosomes = ['A', 'B']
                 iter.each { snpId, allelesStr, patientId -> 
                     def zygosity 

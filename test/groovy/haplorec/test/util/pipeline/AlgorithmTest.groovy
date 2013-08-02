@@ -309,6 +309,36 @@ class AlgorithmTest extends GroovyTestCase {
 
     }
 
+    void testDisambiguateBadVariants() {
+        /* Test bad input.
+         */
+        shouldFail(IllegalArgumentException) {
+            disambiguateHetsTest(
+                [
+                    [snp_id: 'rs1050828', allele: 'C'],
+                ],
+                [
+                    AKnownBKnown: [
+                    ],
+                    AKnownBNovel: [
+                    ],
+                ])
+        }
+        shouldFail(IllegalArgumentException) {
+            disambiguateHetsTest(
+                [
+                    [snp_id: 'rs1050828', allele: 'C'],
+                    [snp_id: 'rs1050829', allele: 'T'],
+                ],
+                [
+                    AKnownBKnown: [
+                    ],
+                    AKnownBNovel: [
+                    ],
+                ])
+        }
+    }
+
     def generateExpected(snpIds, expectedAlleles) {
         def asRows = { sequencePairs ->
             sequencePairs.collect { s1, s2 ->

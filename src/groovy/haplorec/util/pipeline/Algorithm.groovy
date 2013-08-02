@@ -71,16 +71,29 @@ public class Algorithm {
      * ]
      */
     static def disambiguateHets(GeneHaplotypeMatrix geneHaplotypeMatrix, hetVariants) {
-
-        def sortedHets = hetVariants.sort(false) { [it.snp_id, it.allele] }
-        eachN(2, sortedHets) { h1, h2 ->
-            if (h1.snp_id != h2.snp_id) {
-                throw new IllegalArgumentException("Expected a list of heterozygote snps (i.e. 2 variants with the same snp_id)")
+        /* Check for valid input.
+         */
+        hetVariants.each { row ->
+            if (!geneHaplotypeMatrix.snpIds.contains(row.snp_id)) {
+                throw new IllegalArgumentException("The gene-haplotype matrix for ${geneHaplotypeMatrix.geneName} has no SNP ${row.snp_id}")
+            }
+        }
+        hetVariants.countBy() { row -> row.snp_id }.each { snpId, count ->
+            if (count != 2) {
+                throw new IllegalArgumentException("Expected a list of heterozygote snps (i.e. 2 variants with the same snp_id), but saw $snpId with $count variants")
             }
         }
 
-        def variantToHaplotypes = [:]
-        def geneHaplotypes = [] as Set
+        List sortedHets = hetVariants.sort(false) { [it.snp_id, it.allele] }
+
+        /* Allele -> { HaplotypeName }
+         * A mapping from an alleles to the haplotypes (in geneHaplotypeMatrix) that contain them.
+         */
+        Map variantToHaplotypes = [:]
+        /* { HaplotypeName }
+         * Set of haplotypes (in geneHaplotypeMatrix).
+         */
+        Set geneHaplotypes = new LinkedHashSet()
         geneHaplotypeMatrix.each { haplotype, alleles ->
             geneHaplotypes.add(haplotype.haplotypeName)
             [geneHaplotypeMatrix.snpIds as List, alleles].transpose().each { snpIdAllele ->
@@ -92,9 +105,13 @@ public class Algorithm {
             }
         }
 
-        def hetSnps = sortedHets.collect { it.snp_id }.unique()
+        List hetSnps = sortedHets.collect { it.snp_id }.unique() as List
         int numHets = hetSnps.size()
-        def otherStrand = { AAlleles -> 
+        /* Given a sequence of alleles made up of variants from sortedHets, return the strand that 
+         * would make up the opposing strand (i.e. the remaining variants in sortedHets not already 
+         * used in AAlleles).
+         */
+        Closure<List<CharSequence>> otherStrand = { List<CharSequence> AAlleles -> 
             def BAlleles = new ArrayList(AAlleles.size())
             def i = 0
             eachN(2, sortedHets) { h1, h2 ->
@@ -113,10 +130,13 @@ public class Algorithm {
         /* [T, A]
          * Where key == sequence of allele[i] for hetSnps[i]
          */
-        Set hetSequences = new LinkedHashSet()
+        Set<List<CharSequence>> hetSequences = new LinkedHashSet()
 
         def uniqueSnps 
-        uniqueSnps = { i, variants, sequence, haplotypes ->
+        /* Fill hetSequences with heterozygous allele sequences s = ['A', 'T', ...] (where s[i] is 
+         * an allele for SNP hetSnp[i]) that uniquely identify a haplotype in geneHaplotypeMatrix.
+         */
+        uniqueSnps = { int i, List variants, HetSequence sequence, Set haplotypes ->
             if (i >= variants.size() && (
                     /* A unique haplotype is identified by this heterozygote sequence.
                      */
@@ -161,33 +181,31 @@ public class Algorithm {
         }
         uniqueSnps(0, sortedHets, null, geneHaplotypes)
 
-        // def hetSequences = new LinkedHashSet(hetSequenceToHaplotype.keySet())
-        /* List of sequences ['A', 'T', ...] for physical chromosomes A and B, where both identify known haplotypes.
+        /* List of sequences ['A', 'T', ...] for physical chromosomes A and B, where both identify 
+         * known haplotypes.
          */
-        def A = []
-        def B = []
+        List<List<CharSequence>> A = []
+        List<List<CharSequence>> B = []
         /* Same as above, but where A is known and B is novel.
          */
-        def AKnown = []
-        def BNovel = []
+        List<List<CharSequence>> AKnown = []
+        List<List<CharSequence>> BNovel = []
         while (hetSequences.size() > 0) {
             def s = hetSequences.iterator().next()
             hetSequences.remove(s)
             def sOther = otherStrand(s)
             if (hetSequences.contains(sOther)) {
+                /* s identifies a known haplotype and so does sOther.  
+                 */
                 hetSequences.remove(sOther)
-                /* Return physical chromosome sequences in a consistent ordering (ordered by alleles, with physical 
-                 * chromosome A having the least ordered sequence).
+                /* Return physical chromosome sequences in a consistent ordering (ordered by 
+                 * alleles, with physical chromosome A having the least ordered sequence).
                  */
                 def (s1, s2) = [s, sOther].sort()
                 A.add(s1)
                 B.add(s2)
             } else {
                 /* s identifies a known haplotype, but sOther identifies a novel haplotype.  
-                 * Given a choice between calling: 
-                 * 1) 'known haplotype' / 'known haplotype'
-                 * 2) 'known haplotype' / 'novel haplotype'
-                 * we have a preference for calling 1).
                  */
                 AKnown.add(s)
                 BNovel.add(sOther)
@@ -196,7 +214,20 @@ public class Algorithm {
         assert A.size() == B.size()
         assert AKnown.size() == BNovel.size()
 
-        def variants = { s1, s2 ->
+        /* Annotate a pair of hetSequence's with its snp_id and physical_chromosome.
+         * e.g. 
+         * hetSnps = ['rs1', 'rs2']
+         * s1 = ['A', 'T']
+         * s2 = ['G', 'C']
+         *
+         * Returns: [
+         *     [physical_chromosome: 'A': snp_id: 'rs1', allele: 'A'],
+         *     [physical_chromosome: 'A': snp_id: 'rs2', allele: 'T'],
+         *     [physical_chromosome: 'B': snp_id: 'rs1', allele: 'G'],
+         *     [physical_chromosome: 'B': snp_id: 'rs2', allele: 'C'],
+         * ]
+         */
+        def variants = { List<CharSequence> s1, List<CharSequence> s2 ->
             def asVariants = { physicalChromosome, alleles ->
                 [alleles, hetSnps].transpose().collect { allele, snpId -> 
                     [
@@ -222,14 +253,16 @@ public class Algorithm {
         ]
 
     }
-    /* Helper class for disambiguateHets.
+    /* Helper class for disambiguateHets.  Used to build up a tree of heterozygous sequence 
+     * possibilities, where nodes are allele's and the path from a leaf node to the root represents 
+     * a sequence.
      */
     private static class HetSequence {
-        String allele 
+        CharSequence allele 
         HetSequence rest
 
-        List alleles(int size) {
-            def xs = new ArrayList(size) 
+        List<CharSequence> alleles(int size) {
+            List<CharSequence> xs = new ArrayList(size) 
             HetSequence node = this
             for (int i = 0; i < size; i++) {
                 xs[size-i-1] = node.allele
@@ -255,6 +288,12 @@ public class Algorithm {
         }
     }
 
+    /* Given an iterable [x1, x2, ..., xm],  for n = 2 for example, do the computation:
+     * f(x1, x2)
+     * f(x3, x4)
+     * ...
+     * f(x(m-1), xm)
+     */
     static def eachN(int n, iter, Closure f) {
         def xs = [] 
         iter.each { x ->

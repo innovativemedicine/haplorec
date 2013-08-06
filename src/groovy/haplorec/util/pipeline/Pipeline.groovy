@@ -135,7 +135,7 @@ public class Pipeline {
      */
     static def genePhenotypeToPhenotypeDrugRecommendation(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
-        return Sql.selectWhereSetContains(
+        return Sql.selectWhereSubsetOf(
             sql,
             /* { (GeneName, PhenotypeName) } -> DrugRecommendation 
              */
@@ -416,7 +416,7 @@ public class Pipeline {
      */
     static def genotypeToGenotypeDrugRecommendation(Map kwargs = [:], groovy.sql.Sql sql) {
         setDefaultKwargs(kwargs)
-        return Sql.selectWhereSetContains(
+        return Sql.selectWhereSubsetOf(
             sql,
             /* { (GeneName, HaplotypeName, HaplotypeName) } -> DrugRecommendation
              */

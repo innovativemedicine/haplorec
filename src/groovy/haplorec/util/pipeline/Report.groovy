@@ -176,9 +176,14 @@ public class Report {
             ])
     }
 
-    /** Replace {table}.{field} names from MySQL with user-friendlier aliases.
+    /** Generate a report, which is a Report.condensedJoin with keys of each row replaced with aliases.
+     *
+     * @param kwargs.fillWith a function of type ( row, column -> value ) that replaces missing or 
+     * null values in the join (default: null).
      */
     private static def report(Map kwargs = [:], groovy.sql.Sql sql) {
+        /* Replace {table}.{field} names from MySQL with user-friendlier aliases.
+         */
         Map aliases = [
             PATIENT_ID      : 'SAMPLE_ID',
             GENE_NAME       : 'GENE',

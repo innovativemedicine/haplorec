@@ -192,7 +192,7 @@ public class SqlTest extends DBTest {
 		createTableFromExistingTest(columns:['x', 'y'], indexColumns:[['x'], ['x', 'y']], existingRows)
     }
 
-	def _setContainsTest(Map kwargs = [:], tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows, f) {
+	def _subsetTest(Map kwargs = [:], tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows, f) {
 		def (tableA, tableAColumns) = parseCreateTableStatement(tableACreateStmt)
 		def (tableB, tableBColumns) = parseCreateTableStatement(tableBCreateStmt)
 		try {
@@ -211,17 +211,17 @@ public class SqlTest extends DBTest {
 		}
 	}
 	
-	def selectWhereEitherSetContainsTest(Map kwargs = [:], tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows) {
-        _setContainsTest(kwargs, tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows, Sql.&selectWhereEitherSetContains)
+	def selectWhereEitherSubsetOfTest(Map kwargs = [:], tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows) {
+        _subsetTest(kwargs, tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows, Sql.&selectWhereEitherSubsetOf)
     }
 
-	def selectWhereSetContainsTest(Map kwargs = [:], tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows) {
-        _setContainsTest(kwargs, tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows, Sql.&selectWhereSetContains)
+	def selectWhereSubsetOfTest(Map kwargs = [:], tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows) {
+        _subsetTest(kwargs, tableACreateStmt, tableARows, tableBCreateStmt, tableBRows, expectRows, Sql.&selectWhereSubsetOf)
     }
 	
-	void testSelectWhereSetContains() {
+	void testSelectWhereSubsetOf() {
 
-		selectWhereSetContainsTest(
+		selectWhereSubsetOfTest(
 			// { (x, y) }
 			"create table A(x integer, y integer)",
 			[
@@ -234,16 +234,16 @@ public class SqlTest extends DBTest {
 			tableBGroupBy: ['z'],
 			"create table B(z integer, x integer, y integer)",
 			[
-				// A == B
+				// A == B (A is a subset of B)
 				[10, 1, 1],
 				[10, 1, 2],
 				[10, 1, 3],
 				[10, 1, 4],
-				// A <= B (ignored)
+				// B is a subset of A, but A is not a subset of B (ignored)
 				[20, 1, 1],
 				[20, 1, 2],
 				[20, 1, 3],
-				// A >= B
+				// A is a subset of B 
 				[30, 1, 1],
 				[30, 1, 2],
 				[30, 1, 3],
@@ -260,7 +260,7 @@ public class SqlTest extends DBTest {
 			])
 
 
-		selectWhereSetContainsTest(
+		selectWhereSubsetOfTest(
 			// a, b, { (x, y) }
 			tableAGroupBy: ['a', 'b'],
 			"create table A(a integer, b integer, x integer, y integer)",
@@ -279,16 +279,16 @@ public class SqlTest extends DBTest {
 			tableBGroupBy: ['z'],
 			"create table B(z integer, x integer, y integer)",
 			[
-				// A == B
+				// A == B (A is a subset of B)
 				[10, 1, 1],
 				[10, 1, 2],
 				[10, 1, 3],
 				[10, 1, 4],
-				// A <= B (ignored)
+				// B is a subset of A, but A is not a subset of B (ignored)
 				[20, 1, 1],
 				[20, 1, 2],
 				[20, 1, 3],
-				// A >= B
+				// A is a subset of B 
 				[30, 1, 1],
 				[30, 1, 2],
 				[30, 1, 3],
@@ -310,9 +310,9 @@ public class SqlTest extends DBTest {
 		
     }
 
-	void testSelectWhereEitherSetContains() {
+	void testSelectWhereEitherSubsetOf() {
 
-		selectWhereEitherSetContainsTest(
+		selectWhereEitherSubsetOfTest(
 			// { (x, y) }
 			"create table A(x integer, y integer)",
 			[
@@ -351,7 +351,7 @@ public class SqlTest extends DBTest {
 				[30],
 			])
 
-		selectWhereEitherSetContainsTest(
+		selectWhereEitherSubsetOfTest(
 			// { (a, b) }
 			"create table A(a varchar(10), b varchar(5))",
 			[
@@ -390,7 +390,7 @@ public class SqlTest extends DBTest {
 				['30', '30_'],
 			])
 
-		selectWhereEitherSetContainsTest(
+		selectWhereEitherSubsetOfTest(
 			// a, b, { (x, y) }
 			tableAGroupBy: ['a', 'b'],
 			"create table A(a integer, b integer, x integer, y integer)",
@@ -440,7 +440,7 @@ public class SqlTest extends DBTest {
 				[13, 14, 30],
 			])
 		
-		selectWhereEitherSetContainsTest(
+		selectWhereEitherSubsetOfTest(
 			sqlParams:[somevar:55],
 			// { (x, y) }
 			"create table A(x integer, y integer)",

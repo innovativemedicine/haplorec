@@ -237,6 +237,8 @@ class Sql {
      * For example:
      *
 	 * columnMap = ['x':'x', 'y':['y1', 'y2']]
+     *
+     * groupBy = ['x']
      * 
      * rowTable:
 	 * A(x, y) 
@@ -405,8 +407,29 @@ class Sql {
 		}
 	}
 	
+    /* Engines supported by MySQL.
+     */
     private static def engines = ['MEMORY', 'MyISAM', 'InnoDB']
+    /* Valid values for kwargs.saveAs parameter (other than table engines).
+     */
     private static def validSaveAs = engines + ['query', 'existing', 'rows', 'iterator']
+    /** Perform an SQL query with parameters specified as a map in kwargs.sqlParams.
+     * kwargs.saveAs specifies how the query is handled (whether it is saved a new or existing 
+     * table, or returned as a list of maps, or returned as an iterator).
+     *
+     * @param query
+     * the query to execute, possibly with :params from kwargs.sqlParams.
+     * @param kwargs.saveAs
+     * one of:
+     * 1) a MySQL engine (in Sql.engines), specifying the new table to create from this query.
+     * 2) 'existing', specifying to insert into an existing table.
+     * 3) 'rows', returning the query as a list of maps
+     * 4) 'iterator', return an result with a .each method for iterating over each map
+     * @param kwargs.intoTable
+     * if kwargs.saveAs is a MySQL engine or 'existing', specfies the table we insert into.
+     * @param columns
+     * if kwargs.saveAs is 'existing', specifies the columns of kwargs.intoTable to insert into. 
+     */
     private static def selectAs(Map kwargs = [:], groovy.sql.Sql sql, query, columns) {
         setDefaultKwargs(kwargs)
         if (engines.any { kwargs.saveAs == it }) {
@@ -437,6 +460,16 @@ class Sql {
         }
     }
 	
+    /** Insert an iterable of lists or maps into table.
+     *
+     * @param columns
+     * Which columns of table we are inserting.  Optional if rows is an iterable of maps (since we 
+     * default to the first row's keySet as the columns).
+     * @param table
+     * The table to insert into.
+     * @param rows
+     * An iterable of maps or lists.
+     */
 	static def insert(groovy.sql.Sql sql, table, columns, rows) {
         if (rows == null || rows instanceof List && rows.size() == 0) {
             return
@@ -455,7 +488,7 @@ class Sql {
                     }
                     w.println(
                         (row instanceof LinkedHashMap ? columns.collect { row[it] } : row).collect { value ->
-                            // TOOD: handle escaping '\t' in value via quoting 
+                            // TODO: handle escaping '\t' in value via quoting 
                             if (value == null) {
                                 // We need to use \N in the data file to represent a NULL value in mysql
                                 // http://stackoverflow.com/questions/2675323/mysql-load-null-values-from-csv-data
@@ -487,6 +520,9 @@ class Sql {
         // }
 	}
 	
+    /** Same as other insert but with columns unspecified.
+     * That is, just insert into columns in the order in which they are declared in the schema.
+     */
 	static def insert(groovy.sql.Sql sql, table, rows) {
 		insert(sql, table, [], rows)
 	}
@@ -500,50 +536,16 @@ class Sql {
 		setDefault('saveAs', DEFAULT_ENGINE_SAVE_AS)
 	}
 
-    /* groovy.sql.Sql.* methods don't handle an empty parameter map well; this is just a convenience wrapper that hands such 
-     * a method no params if the params map is empty
-     */
-    static def sqlWithParams(sqlMethod, stmt, params) {
-        if (params != [:]) {
-            return sqlMethod(stmt)
-        } else {
-            return sqlMethod(stmt, params)
-        }
-    }
-	
-	/* Execute a block of code using a unique identifier generated from the autoincrement column when inserting an empty row into the provided table Insert an empty row into $table,
-	 * Keyword arguments:
-	 * 
-	 * optional:
-	 * String idColumn: name of the autoincrement column for the provided table
-	 * Map<String, T> values: a map from column names to values (useful if the table your using doesn't specify default values)
-	 */
-	static def withUniqueId(Map kwargs = [:], groovy.sql.Sql sql, table, Closure doWithId) {
-		if (kwargs.idColumn == null) { kwargs.idColumn = 'id' }
-		if (kwargs.values == null) { kwargs.values = [:] }
-		if (kwargs.deleteAfter == null) { kwargs.deleteAfter = true }
-		// make sure this works with multiple columns
-		def extraColumns = kwargs.values.keySet()
-		def keys = sql.executeInsert """\
-			insert into $table(${extraColumns.join(', ')}) 
-			values(${(['?']*extraColumns.size()).join(', ')})""".toString(), 
-			extraColumns.collect { c -> kwargs.values[c] } 
-		def id = keys[0][0]
-		try {
-			doWithId(id)
-		} finally {
-            if (kwargs.deleteAfter) {
-                sql.execute "delete from $table where ${kwargs.idColumn} = ?", id
-            }
-		}
-	}
-	
 	private static def hashRowsToListRows(rows, cols) {
 		rows.collect { r ->
 			cols.collect { r[it] }
 		}
 	}
 
+    /** Select columns from information_schema.columns.
+     * @param kwargs.select
+     * columns to select from information_schema.columns
+     */
     private static def columnMetadata(Map kwargs = [:], groovy.sql.Sql sql) {
         if (kwargs.select == null) { kwargs.select = ['column_name'] }
 		_sql(kwargs, sql.&rows, """\
@@ -553,7 +555,18 @@ class Sql {
             |""".stripMargin())
     }
 
-    static def tblColumns(Map kwargs = [:], groovy.sql.Sql sql) {
+    /** Return metadata about tables in this database as a map.
+     * In particular, returns a map like:
+     * [
+     *     table1: [
+     *         // includes primary key columns
+     *         columns:    [col1, col2, ...],
+     *         // just primary key columns
+     *         primaryKey: [col1, col2],
+     *     ]
+     * ]
+     */
+    static Map tblColumns(Map kwargs = [:], groovy.sql.Sql sql) {
         def columns = columnMetadata(sql,
             select: ['table_name', 'column_name', 'column_key'],
         )
@@ -580,7 +593,12 @@ class Sql {
         return tables
     }
 	
-	static def tableColumns(Map kwargs = [:], groovy.sql.Sql sql, table) {
+    /** Return a list of columns belonging to this table.
+     *
+     * @param kwargs.where
+     * Additional where clause condition on information_schema.columns.
+     */
+	static List tableColumns(Map kwargs = [:], groovy.sql.Sql sql, table) {
         kwargs.sqlParams = (kwargs.sqlParams ?: [:]) + [table: table]
 		hashRowsToListRows(_sql(kwargs, sql.&rows, """\
 			|select column_name 
@@ -591,8 +609,20 @@ class Sql {
 			['column_name']).collect { it[0] }
 	}
 
-    /* Wrapper for Sql.eachRow that replaces columns at positions 0..n with kwargs.names 0..n
-    */
+    /** Wrapper for groovy.sql.Sql.eachRow that replaces the row's keys (the columns returned by 
+     * query at positions 1..n) with kwargs.names 1..n.
+     *
+     * The result is returned as an iterable.
+     *
+     * This is useful for queries that return columns with the same field name (from different 
+     * tables), since these can be distinguished using groovy.sql.Sql.eachRow, whereas identical 
+     * column names get merged in groovy.sql.Sql.rows.
+     *
+     * @param query
+     * the query to execute, possibly with :params from kwargs.sqlParams.
+     * @param names
+     * a list of names the same size as the rows returned by query.
+     */
     static def rows(Map kwargs = [:], groovy.sql.Sql sql, query) {
         new Object() {
             def each(Closure f) {

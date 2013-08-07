@@ -481,36 +481,6 @@ public class SqlTest extends DBTest {
 
 	}
 	
-	def withUniqueIdTest(Map kwargs = [:], tableCreateStmt) {
-		def (table, _) = parseCreateTableStatement(tableCreateStmt)
-		tableTest(sql, [
-			[tableCreateStmt],
-		]) {
-			/* expected behaviour of Sql.withUniqueId:
-			 * - a new row exists in $table with a unique id during the execution of doWithId
-			 * - after withUniqueId (and doWithId) executes, that same row has been removed
-			 */
-			def id
-			assert 0 == selectCount(sql, table)
-			Sql.withUniqueId(kwargs, sql, table) { _id ->
-				id = _id
-				assert 1 == selectCount(sql, table) : "a new row exists in $table with a unique id during the execution of doWithId"
-			}
-			assert 0 == selectCount(sql, table) : "after withUniqueId (and doWithId) executes, that same row has been removed"
-		}
-	}
-	
-	void testWithUniqueId() {
-		withUniqueIdTest("create table id_generator(id bigint not null auto_increment, primary key (id))")
-		withUniqueIdTest("""\
-            create table id_generator(
-                id bigint not null auto_increment, 
-			    somestring varchar(50) not null, 
-			    primary key (id))
-			""",
-			values: ['somestring':'somevalue'])
-	}
-
     def insertTest(String createTableStmt, groovy.sql.Sql sql, table, columns, rows) {
         sql.execute createTableStmt
         List expect = []

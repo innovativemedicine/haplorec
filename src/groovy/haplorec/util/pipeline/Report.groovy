@@ -2,7 +2,6 @@ package haplorec.util.pipeline
 
 import haplorec.util.Row
 import haplorec.util.data.GeneHaplotypeMatrix
-import haplorec.util.data.Sql
 // import haplorec.util.sql.Report (we use this, but we can't import it due to conflicting names)
 
 /** Generate reports suitable for output to DSV format.

@@ -15,21 +15,25 @@ class Report {
      * Repeated information is considered to be consecutive rows with groups whose 
      * kwargs.duplicateKey is the same.
      *
-     * @param kwargs.select a map like [table_name: ['field1', ..., 'fieldn'] which specifies which 
-     * fields to select (and in what order)
-     * @param kwargs.join a map like [table_name: ["JOIN TYPE", "JOIN CLAUSE"]], specifying the join
-     * @param kwargs.where a string representing the where clause, possibly using :some_param 
-     * specified in kwargs.sqlParams
-     * @param kwargs.sqlParams a map like [some_param: 'a_value'] which will be passed as params 
-     * when executing the generated SQL string
-     * @param kwargs.duplicateKey a map like [table1: ['table1field', ..., [table2: ['table2field', ...]]]] 
-     * specifying what consecutive rows with groups with the same duplicateKey's are considered 
-     * duplicate groups (if a table isn't specified we default to its primary key)
-     * @param kwargs.fillWith a function of type ( row, column -> value ) that replaces duplicate 
-     * fields (hence removed) in the join (default: return null).
-     * @param kwargs.replace a function of type ( row, column -> boolean ) indicates whether to 
-     * replace row[column] with kwargs.fillWith(row, column) (default: if the row is missing the 
-     * column, fill it with fillWith)
+     * @param kwargs.select 
+     * a map like [table_name: ['field1', ..., 'fieldn'] which specifies which fields to select (and in what order)
+     * @param kwargs.join 
+     * a map like [table_name: ["JOIN TYPE", "JOIN CLAUSE"]], specifying the join
+     * @param kwargs.where 
+     * a string representing the where clause, possibly using :some_param specified in kwargs.sqlParams
+     * @param kwargs.sqlParams 
+     * a map like [some_param: 'a_value'] which will be passed as params when executing the generated SQL string
+     * @param kwargs.duplicateKey 
+     * a map like [table1: ['table1field', ..., [table2: ['table2field', ...]]]] specifying what 
+     * consecutive rows with groups with the same duplicateKey's are considered duplicate groups (if 
+     * a table isn't specified we default to its primary key)
+     * @param kwargs.fillWith 
+     * a function of type ( row, column -> value ) that replaces duplicate fields (hence removed) in 
+     * the join (default: return null).
+     * @param kwargs.replace 
+     * a function of type ( row, column -> boolean ) indicates whether to replace row[column] with 
+     * kwargs.fillWith(row, column) (default: if the row is missing the column, fill it with 
+     * fillWith)
      */
     private static def condensedJoin(Map kwargs = [:], groovy.sql.Sql sql) {
         if (kwargs.fillWith == null) {

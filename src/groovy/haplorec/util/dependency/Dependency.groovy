@@ -2,6 +2,28 @@ package haplorec.util.dependency
 
 import groovy.transform.EqualsAndHashCode
 
+/** This class represents a dependency in a dependency graph, and its static methods represent 
+ * associated algorithms on dependency graphs.
+ * 
+ * Given a dependency graph defined with these relationships (NOTE: A -> B means A depends on B):
+ * A -> B
+ * A -> C
+ *
+ * Then A looks like:
+ * Dependency(target:'A', dependsOn: [
+ *     Dependency(target:'B', dependsOn:[]), 
+ *     Dependency(target:'C', dependsOn:[]),
+ * ])
+ *
+ * Rules for building a dependency are specified via the rule property, which is a function of type 
+ * ( -> ) (i.e. no arguments or return values).
+ *
+ * Algorithms:
+ * - Building a target and its associated dependencies is implemented via the bld the function
+ * - Layout algorithms for arranging the dependencies of a graph in a cartesian coordinate system 
+ *   are implemented in lvls and rowLevels 
+ * - Calculation of dependants (using dependency relationships) is implemented in dependants
+ */
 @EqualsAndHashCode(includes='target')
 class Dependency {
 	String target

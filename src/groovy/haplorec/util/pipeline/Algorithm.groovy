@@ -2,13 +2,13 @@ package haplorec.util.pipeline
 
 import haplorec.util.data.GeneHaplotypeMatrix
 
-/* Algorithm's used in haplorec, from various stages.  
+/** Algorithm's used in haplorec, from various stages.  
  *
  * The main point of this file to leave out any sql dependencies, making for faster and easier testing.
  */
 public class Algorithm {
 
-    /* Given a gene-haplotype matrix for a gene, and heterozygous variants belonging to SNPs of that 
+    /** Given a gene-haplotype matrix for a gene, and heterozygous variants belonging to SNPs of that 
      * gene, disambiguate on which physical chromosome the heterozygote SNPs occur.  
      *
      * This is done by looking for existing haplotypes whose alleles are in the heterozygote calls, 
@@ -294,7 +294,7 @@ public class Algorithm {
      * ...
      * f(x(m-1), xm)
      */
-    static def eachN(int n, iter, Closure f) {
+    private static def eachN(int n, iter, Closure f) {
         def xs = [] 
         iter.each { x ->
             xs.add(x)

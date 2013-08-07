@@ -132,7 +132,7 @@ class Dependency {
 		 */
 		def nulldepOnList=[]
 		for (i in levelList){
-			//change dependsOn really a list or targets not names
+			//change dependsOn really a list of targets not names
 			i.dependsOn=i.dependsOn.findAll{it in levelList.collect{it.name}}
 			i.dependants=i.dependants.findAll{it in levelList}
 			if (i.dependsOn==[]){

@@ -563,7 +563,7 @@ public class Pipeline {
         } else {
             /* Given an existing jobId, delete all job_* rows, then rerun the pipeline.
              */
-            if ((sql.rows("select count(*) as count from ${tbl.job} where job_id = :jobId".toString(), kwargs))[0]['count'] == 0) {
+            if ((sql.rows("select count(*) as count from ${tbl.job} where id = :jobId".toString(), kwargs))[0]['count'] == 0) {
                 throw new IllegalArgumentException("No such job with job_id ${kwargs.jobId}")
             }
             stageTables.each { __, jobTable ->

@@ -7,57 +7,42 @@ class Input {
 	@InheritConstructors
 	static class InvalidInputException extends RuntimeException {}
 	
-	static private def fileOrOpen(file) {
-		if (file != null) {
-			if (file instanceof CharSequence) {
-				return new FileReader(file)
-			} else {
-				return file
-			}
-		} else {
-			throw new IllegalArgumentException("Expected either an input stream or a filepath but saw ${file}")
-		}
-	}
-	
-	private static def idxMap(Map kwargs = [:], List xs) {
-		int i = 0
-		if (kwargs.start != null) { i = kwargs.start }
-		return xs.inject([:]) { m, x ->
-			m[x] = i
-			i += 1
-            m
-		}
-	}
-
-	/*
-    dsv(file)
-    dsv(file, fields:[1,2,3])
-    dsv(file, fields:['genotype_id', 'snp_id'], header:['some_other_stuff', 'genotype_id', 'snp_id'])
-    dsv(file, fields:['genotype_id', 'snp_id'], fieldIndices:[genotype_id:2, snp_id:5])
-    */
-    /* Keyword arguments:
+    /** Return an iterator over a delimiter separated file.
+     * Provides options for skipping a header (either by skipping a line it we see it, or just 
+     * skipping the first line regardless).
      *
-     * skipHeader:
+     * @param fileOrStream
+     * Either a string representing a filepath which is opened is read from, or an already open 
+     * input stream.
+     *
+     * Keyword arguments:
+     *
+     * Optional:
+     * 
+     * @param kwargs.fields
+     * a list of field names belonging to kwargs.header, or a list of 1-based indices of fields to 
+     * keep
+     *
+     * @param kwargs.header
+     * the header line for the file (which may or may not be at the top of the input, see requireHeader)
+     * 
+     * @param kwargs.separator
+     * regex pattern to split lines of input by (default: /\t/)
+     *
+     * @param kwargs.skipHeader
      * skip the first line of the input, treating it as a header line (default: false)
      * 
-     * requireHeader:
+     * @param kwargs.requireHeader
      * make sure header matches the first line of the input, otherwise throw InvalidInputException 
      * (default: true if header argument provided, false otherwise)
      * 
-     * header:
-     * the header line for the file (which may or may not be at the top of the input, see requireHeader)
-     * 
-     * asList:
+     * @param kwargs.asList
      * when true, for the returned iterator, execute .each with the input line as the arguments. When 
      * false, pass the input line as a list instead (default: false)
      * 
-     * closeAfter:
-     * close the input after finished reading (default: true)
-     * 
-     * separator:
-     * regex pattern to split lines of input by (default: /\t/)
+     * @param kwargs.closeAfter
+     * close the input stream after finished reading (default: true)
      */
-    
     static def dsv(Map kwargs = [:], fileOrStream) {
 		if (kwargs.skipHeader == null) { kwargs.skipHeader = false }
         // if they provide a header, then by default we will require it in the input
@@ -72,29 +57,21 @@ class Input {
 		if (kwargs.separator == null) { kwargs.separator = /\t/ }
 
         def fieldNumbers
-        if (kwargs.header == null && kwargs.fieldIndices == null && kwargs.fields == null) {
+        if (kwargs.header == null && kwargs.fields == null) {
             fieldNumbers = null
             // skip
         } else if (kwargs.fields != null && kwargs.fields[0] instanceof Integer) {
             fieldNumbers = kwargs.fields
-        } else if (kwargs.header != null && kwargs.fieldIndices == null && kwargs.fields == null) {
+        } else if (kwargs.header != null && kwargs.fields == null) {
 			fieldNumbers = (1..kwargs.header.size())
     	} else {
-            def collectFieldIndices = { fieldIndices ->
-                kwargs.fields.collect { field ->
-                    field = fieldIndices[field] 
-                    if (field == null) {
-                        throw new IllegalArgumentException("no such field $field in fieldIndices: $fieldIndices")
-                    }
-                    return field
+            Map fieldIndices = idxMap(kwargs.header, start:1)
+            fieldNumbers = kwargs.fields.collect { field ->
+                field = fieldIndices[field] 
+                if (field == null) {
+                    throw new IllegalArgumentException("no such field $field in header: $field")
                 }
-            }
-            if (kwargs.header == null && kwargs.fieldIndices == null) {
-                throw new IllegalArgumentException("field names were provided for reading $fileOrStream but one of header or fieldIndices arguments are needed")
-            } else if (kwargs.fieldIndices != null) {
-                fieldNumbers = collectFieldIndices(kwargs.fieldIndices)
-            } else {
-                fieldNumbers = collectFieldIndices(idxMap(kwargs.header, start:1))
+                return field
             }
         }
 		return new Object() {
@@ -161,6 +138,32 @@ class Input {
 			}
 		}
     }
+
+    /* If it's a string, open it as a file, otherwise assume its an open input stream.
+     */
+	static private def fileOrOpen(file) {
+		if (file != null) {
+			if (file instanceof CharSequence) {
+				return new FileReader(file)
+			} else {
+				return file
+			}
+		} else {
+			throw new IllegalArgumentException("Expected either an input stream or a filepath but saw ${file}")
+		}
+	}
+	
+    /* idxMap(['one', 'two', 'three'], start: 1) == [one: 1, two: 2, three: 3]
+     */
+	private static def idxMap(Map kwargs = [:], List xs) {
+		int i = 0
+		if (kwargs.start != null) { i = kwargs.start }
+		return xs.inject([:]) { m, x ->
+			m[x] = i
+			i += 1
+            m
+		}
+	}
 
     static def applyF(boolean asList, List xs, Closure f) {
         if (asList) {

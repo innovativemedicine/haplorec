@@ -1,19 +1,13 @@
 package haplorec.util
 
-/* A module for iterating over rows, where a row is a list of of maps, where the maps have a subset 
- * of the first row's keys.  
- * e.g.
- * rows = [
- *     [a:1, b:2, c:3], // this is the header row
- *     [a:1, b:3],
- *     [:]
- * ]
- * The only function that doesn't assume the first row is a header row is noDuplicates.
+/** Functions that take and return iterators.  
+ * An iterator is any object that implements a .each(Closure f) for iterating over each element in it.
  */
 class Row {
 
-    /* Return an iterator that removes duplicate groups of columns from rows in iter.  Groups are 
-     * identified by the groups parameter.
+    /** Return an iterator that removes duplicate groups of columns from rows in iter.  
+     * Rows only retain a group of fields if the values of the row that make up its duplicate key 
+     * (see groups) hasn't been seen before.
      * e.g.
      * groups = [
      * 
@@ -26,10 +20,28 @@ class Row {
      *     // we have a row with duplicate 'a' but unique 'b', we still keep 'b' in the row.
      *
      * ]
+     * iter = [
+     *     [a:1, b:2, c:3],
+     *     [a:1, b:3, c:3],
+     *     [a:1, b:3, c:4],
+     * ]
+     *
+     * Returns:
+     * [
+     *     [a:1, b:2, c:3]
+     *     [b:3, c:3]
+     *     [:]
+     * ]
+     *
+     * @param iter an iterable of maps
+     * @param groups a map like [GroupName -> [[DuplicateKey], [Fields]]] that identifies a group of 
+     * fields and their associated duplicate key (think primary key)
      */
     static def noDuplicates(Map kwargs = [:], iter, groups) {
         return new Object() {
             def each(Closure f) {
+                /* GroupName -> { SeenDuplicateKeyValues } 
+                 */
                 Map seen = groups.keySet().inject([:]) { m, g -> m[g] = [] as Set; m }
                 iter.each { map ->
                     def row = [:]
@@ -37,8 +49,11 @@ class Row {
                         def (duplicateKey, columnsToShow) = groupColumns
                         def k = duplicateKey.collect { map[it] }
                         if (!seen[g].contains(k)) {
-                            // add the group g
+                            /* We've now seen this key; add it to its group.
+                             */
                             seen[g].add(k)
+                            /* Add the fields for this group to this row.
+                             */
                             columnsToShow.each { row[it] = map[it] }
                         }
                     }
@@ -48,7 +63,9 @@ class Row {
         }
     }
 
-    /* Assumes iter is ordered by its groups.
+    /** Given an iterator of rows, return an iterator that groups consecutive rows with the same 
+     * values for fields in groups. 
+     * @param groups keys in row to group consecutive rows by
      */
     static def groupBy(iter, groups) {
         return new Object() {
@@ -77,9 +94,21 @@ class Row {
         }
     }
 
-    /* Return an iterator that collapses consecutive rows into a single row.  Collapsing of two rows 
-     * defaults to occuring only when the two rows have no columns in common.  Note that collapsing 
-     * is an accumulative operation and not a pairwise operation; that is:
+    /** Row functions where the first row is a header row.
+     * =============================================================================================
+     * Functions for iterating over rows (where a row is a Map), where the rows have a subset 
+     * of the first row's keys.  
+     * e.g.
+     * rows = [
+     *     [a:1, b:2, c:3], // this is the header row
+     *     [a:1, b:3],
+     *     [:]
+     * ]
+     */
+
+    /** Return an iterator that collapses consecutive rows into a single row.  
+     * Collapsing of two rows defaults to occuring only when the two rows have no columns in common.  
+     * Note that collapsing is an accumulative operation and not a pairwise operation; that is:
      * collapse([
      *   [a:1],
      *   [b:1],
@@ -88,11 +117,13 @@ class Row {
      * ==
      * [[a:1, b:1, c:1]]
      *
-     * Keyword arguments:
-     *
-     * canCollapse: 
-     * a closure of the type { header, accumulated row, current row -> boolean } that returns true 
+     * @param kwargs.canCollapse 
+     * a function of the type ( header, accumulated row, current row -> boolean ) that returns true 
      * if accumulated row should have all rows in current row added to it. (default: see above)
+     * @param collapse
+     * a function of type ( header, accumulated row, current row -> (void or Map) ) that either 
+     * modifies accumulated row (by merging current row into it), or returns a map representing the 
+     * new accumulated row (default: overwrite anything in accumulated row with current row) 
      */
     static def collapse(Map kwargs = [:], iter) {
         if (kwargs.canCollapse == null) {
@@ -153,12 +184,14 @@ class Row {
         }
     }
 
-    /* Return an iterator that fills missing columns with a value.  
+    /** Return an iterator that fills missing columns with a value.
      *
-     * Keyword arguments:
-     *
-     * with: 
-     * Either a value to fill all missing columns with, or a closure of type { row, column -> value }
+     * @param kwargs.replace 
+     * a function of type ( row, column -> boolean ) that indicates whether to replace row[column] 
+     * with kwargs.with(row, column) (default: if the row is missing the column, fill it with 
+     * kwargs.with)
+     * @param kwargs.with
+     * Either a value to fill all missing columns with, or a function of type ( row, column -> value )
      * that returns the value to store at row[column]
      */
     static def fill(Map kwargs = [:], iter) {
@@ -199,12 +232,14 @@ class Row {
         }
     }
 
-    /* Given a row iterator, writes a delimiter separated string to the stream, with rows terminated 
-     * by newlines.
+    /** Given an iterator over Map's or List's, writes a delimiter separated string to the stream, 
+     * with rows terminated by newlines, with a header as the first line.
      * 
-     * Keyword arguments:
-     *
-     * separator: field delimiter (default: '\t')
+     * @param kwargs.separator
+     * field delimiter (default: '\t')
+     * @param kwargs.null
+     * a function of type ( value -> value ) applied to each value before it's output (default: if 
+     * value is null return '' else v.toString)
      */
     static def asDSV(Map kwargs = [:], iter, Appendable stream) {
         if (kwargs.separator == null) { kwargs.separator = '\t' }
@@ -269,6 +304,10 @@ class Row {
         }
     }
 
+    /** Return an iterator that removes all columns from each row except columns in kwargs.keep.
+     * @param kwargs.keep
+     * a list of column names to keep from each row.
+     */
     static def filter(Map kwargs = [:], iter) {
         return new Object() {
             def each(Closure f) {
@@ -285,18 +324,12 @@ class Row {
         }
     }
 
-    static def changeKeys(Map kwargs = [:], iter) {
-        if (kwargs.to == null) {
-            kwargs.to = { header, h -> h }
-        }
-        return eachRow(iter) { header, row, _ ->
-            row.keySet().inject([:]) { m, k ->
-                m[kwargs.to(header, k)] = row[k]
-                m
-            }
-        }
-    }
-
+    /** Return an iterator over rows that's identical to iter, but also takes the first row.keySet() 
+     * to be the header, and counts the number of rows seen, making the .each method (header, row, 
+     * integer) instead of just (row).
+     * @param f
+     * a function of type ( header, row, integer -> ) for iterating over iter.
+     */
     static def eachRow(iter, Closure f) {
         return new Object() {
             def each(Closure g) {
@@ -313,7 +346,29 @@ class Row {
         }
     }
 
-    /* Return an iterator that flattens it's iterables by 1 level. 
+    /** Return an iterator that swaps each row's keys to something else.
+     * We only retain columns found in the first row (i.e. the header row).
+     * @param kwargs.to
+     * a function of type ( header, columnName -> newColumnName ) that returns the new column name 
+     * to use.
+     */
+    static def changeKeys(Map kwargs = [:], iter) {
+        if (kwargs.to == null) {
+            kwargs.to = { header, h -> h }
+        }
+        return eachRow(iter) { header, row, _ ->
+            row.keySet().inject([:]) { m, k ->
+                m[kwargs.to(header, k)] = row[k]
+                m
+            }
+        }
+    }
+
+    /** Generic iterators (not just over Map's).
+     * =============================================================================================
+     */
+
+    /** Return an iterator that flattens it's iterables by 1 level. 
      * Examples:
      *
      * flatten([[1, 2], [3, 4]])                                    == [1, 2, 3, 4]
@@ -330,7 +385,7 @@ class Row {
         }
     }
 
-    /* Given an iterator over [x1, x2, ..., xn], return an iterator over [g(x1), g(x2), ..., g(xn)].
+    /** Given an iterator over [x1, x2, ..., xn], return an iterator over [g(x1), g(x2), ..., g(xn)].
      * i.e. your standard map function over an iterator instead of a list.
      */
     private static def map(iter, Closure g) {
@@ -343,6 +398,8 @@ class Row {
         }
     }
 
+    /** Convert iter to a list.
+     */
     static List asList(iter) {
         List xs = []
         iter.each { x ->

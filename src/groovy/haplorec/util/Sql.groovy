@@ -5,29 +5,30 @@ import java.util.Map;
 class Sql {
 	private static def DEFAULT_ENGINE_SAVE_AS = 'MyISAM'
 
-	/*
-	 * Keyword Arguments:
+	/** Create a new table from a query on an existing table.
 	 * 
-	 * required:
+	 * Required:
+	 * @param kwargs.query
+     * a string query on columns of existing table (query is executed with limit 0)
+     * Or:
+	 * @param kwargs.columns 
+     * columns to query
+     * @param kwargs.existingTable
+     * existing table to query from
 	 * 
-	 * one of:
-	 *   String query: query on columns of existing table (query is executed with limit 0)
-	 *   [String] columns and String existingTable: columns to use from existing table
-	 * 
-	 * optional:
-	 * 
-	 *   [String] indexColumns: columns on which to create an index (default: don't add an index)
-	 *   boolean dontRunQuery: append 'limit 0' to the query (see query keyword argument) so that we don't 
-	 *                         actually run the query; this is useful if we just want the columns and their 
-	 *                         associated data types from a query string for our new table (default: false)
-	 *   boolean temporary: make a temporary table (default: false)
-	 *   
+	 * Optional:
+     * @param kwargs.indexColumns
+     * list of columns on which to create an index (or a list of lists of columns for multiple 
+     * indexes) (default: don't add an index)
+     * @param kwargs.dontRunQuery
+     * when true, append 'limit 0' to the query (see query keyword argument) so that we don't 
+     * actually run the query; this is useful if we just want the columns and their associated data 
+     * types from a query string for our new table (default: false)
+	 * @param kwargs.temporary
+     * when true, make the new table temporary (default: false)
 	 */
 	static def createTableFromExisting(Map kwargs = [:], groovy.sql.Sql sql, newTable) {
         setDefaultKwargs(kwargs)
-        if (kwargs.onDuplicateKey == 'discard' && kwargs.columns == null) {
-            throw new IllegalArgumentException("must provide a columns argument when onDuplicateKey == 'discard'")
-        }
 		if (!engines.any { kwargs.saveAs == it }) {
 			throw new IllegalArgumentException("saveAs must be a valid MySQL engine type")
 		}
@@ -40,29 +41,64 @@ class Sql {
 			"select ${kwargs.columns.join(', ')} from ${kwargs.existingTable}".toString()
         def createTablePrefix = "create ${(kwargs.temporary) ? 'temporary' : ''} table $newTable engine=${kwargs.saveAs}"
         if (kwargs.dontRunQuery) {
-            // create the temporary table using the right datatypes
+            /* Create the table using the right datatypes.
+             */
             _sql kwargs, sql.&executeUpdate, "$createTablePrefix as ($query) limit 0"
         } else {
-            // insert our query
-            // def qInsertInto = insertIntoSql(kwargs, newTable, query)
-            // _sql kwargs, sql.&executeUpdate, qInsertInto
+            /* Insert our query.
+             */
             _sql kwargs, sql.&executeUpdate, "$createTablePrefix as ($query)"
         }
 		if (kwargs.indexColumns != null) {
 			def createIndex = { cols -> sql.executeUpdate "alter table $newTable add index (${cols.join(', ')})".toString() }
 			if (kwargs.indexColumns[0] instanceof java.util.List) {
+                /* Create multiple indexes.
+                 */
 				kwargs.indexColumns.each { cols -> createIndex(cols) }
 			} else {
+                /* Create a single index.
+                 */
 				createIndex(kwargs.indexColumns)
 			}
 		}
 	}
 
-    /* Keyword arguments:
+    /** Model a set relation operation between two tables A and B by joining them on their "set 
+     * columns", then grouping by each table's groupByColumns (rows with the same groupByColumns 
+     * constitute a single set), comparing the count in each intersected group to the size of the 
+     * original groups (sets) from tables A and B to determine which rows to keep (depending on what 
+     * set relation you want to model).
      *
-     * intersectTable: the table in which to store the result of 'intersecting' tables A and B. Providing this will slow down 
-     * the intersect query, but it could be useful if you wanted to reuse the results of the intersect table for multiple 
-     * selectWhereSetContains queries.  The schema of the table should be tableAGroupBy + tableBGroupBy + ['group_count']. 
+     * See selectWhereSubsetOf for a concrete example of a set relation being modelled.
+     *
+     * @param setColumns
+     * the names of columns from both table A and table B that are used to represent fields in a 
+     * set.
+     * For example, if we have two tables:
+     * A(a, b, x, y) // represents: a, b, { (x, y) }
+     * B(z, x, y)    // represents: z, { (x, y) }
+     * setColumns = ['x', 'y']
+     * @param kwargs.tableAGroupBy
+     * the columns in table A that identify rows belonging to the same set.
+     * For example:
+     * kwargs.tableAGroupBy = ['a', 'b'] for the example in setColumns
+     * @param kwargs.tableBGroupBy
+     * same idea as kwargs.tableAGroupBy but for B.
+     * For example:
+     * kwargs.tableAGroupBy = ['z'] for the example in setColumns
+     * @param countsTableWhere
+     * a function of type ( intersect_count_field, table_A_set_size, table_B_set_size -> whereCondition )
+     * that determines which rows to keep based on the set relation we want to model (see 
+     * selectWhereSubsetOf as an example).
+     * @param kwargs.tableAWhere
+     * restrict the operation on table A to rows matching this where clause
+     * @param kwargs.tableAWhere
+     * same idea as kwargs.tableAWhere but for B
+     * @param kwargs.intersectTable
+     * the table in which to store the result of 'intersecting' tables A and B. Providing this will 
+     * slow down the intersect query, but it could be useful if you wanted to reuse the results of 
+     * the intersect table for multiple selectWhereSubsetOf queries.  The schema of the table 
+     * should be tableAGroupBy + tableBGroupBy + ['group_count']. 
      */
 	private static def intersectQuery(Map kwargs = [:], groovy.sql.Sql sql, tableA, tableB, setColumns, Closure countsTableWhere) {
         setDefaultKwargs(kwargs)
@@ -123,14 +159,16 @@ class Sql {
         }
         def query
         if (kwargs.intersectTable == null) {
-            // counts table is a derived table
+            /* Counts table is a derived table.
+             */
             query = queryWithCountsTable("""\
                 |(
                 |    $intersectQuery
                 |)
             """.stripMargin())
         } else {
-            // counts table is an existing table kwargs.intersectTable (probably with indexes on it to make it have faster access during group_count filtering)
+            /* Counts table is an existing table kwargs.intersectTable (probably with indexes on it to make it have faster access during group_count filtering).
+             */
             selectAs(sql, intersectQuery, groupBy + ['group_count'],
                 intoTable:kwargs.intersectTable,
                 saveAs:'existing',
@@ -146,8 +184,18 @@ class Sql {
 
     }
 
-    // A contains B or B contains A
-	static def selectWhereEitherSetContains(Map kwargs = [:], groovy.sql.Sql sql, tableA, tableB, setColumns) {
+    /** A is a subset of B or B is a subset of A.
+     *
+     * For example, if we have two tables:
+     * A(a, b, x, y) // represents: a, b, { (x, y) }
+     * B(z, x, y)    // represents: z, { (x, y) }
+     *
+     * If we want to model finding sets a in A that are a subet of b in B, or where b is a subset of 
+     * a, then we know |a intersect b| = min(|a|, |b|) is sufficient. 
+     *
+     * Same parameters as intersectQuery, minus countsTableWhere.
+     */
+	static def selectWhereEitherSubsetOf(Map kwargs = [:], groovy.sql.Sql sql, tableA, tableB, setColumns) {
         return intersectQuery(kwargs, sql, tableA, tableB, setColumns) { intersectSize, ASizeQuery, BSizeQuery ->
             return """\
                 |$intersectSize = least(
@@ -158,22 +206,60 @@ class Sql {
         }
 	}
 
-    // A contains B
-	static def selectWhereSetContains(Map kwargs = [:], groovy.sql.Sql sql, tableA, tableB, setColumns) {
+    /** A is a subset of B.
+     *
+     * For example, if we have two tables:
+     * A(a, b, x, y) // represents: a, b, { (x, y) }
+     * B(z, x, y)    // represents: z, { (x, y) }
+     *
+     * If we want to model finding sets a in A that are a subet of b in B, then we know
+     * |a intersect b| = |a| is sufficient. 
+     *
+     * Same parameters as intersectQuery, minus countsTableWhere.
+     */
+	static def selectWhereSubsetOf(Map kwargs = [:], groovy.sql.Sql sql, tableA, tableB, setColumns) {
         return intersectQuery(kwargs, sql, tableA, tableB, setColumns) { intersectSize, ASizeQuery, BSizeQuery ->
             return """\
-                |$intersectSize >= (
+                |$intersectSize = (
                 |    $ASizeQuery
                 |)
             """.stripMargin()
         }
 	}
 
-
-	// columnMap = ['x':'x', 'y':['y1', 'y2']]
-	// A(x, y) B(x, y1, y2)
-	//   1  2    1  2   3
-	//   1  3
+    /** Given a rowTable containing groups of rows with identical values from fields in groupBy, insert those 
+     * groups as single rows in columnTable.
+     *
+     * columnMap is used to map groups in rowTable to single rows in columnTable. If the number of 
+     * rows is smaller than the number of columns we're mapping to, then the remaining columns are 
+     * filled with nulls.
+     *
+     * For example:
+     *
+	 * columnMap = ['x':'x', 'y':['y1', 'y2']]
+     *
+     * groupBy = ['x']
+     * 
+     * rowTable:
+	 * A(x, y) 
+	 *   1  2  
+	 *   1  3
+     *
+     * columnTable:
+     * B(x, y1, y2)
+     *   1  2   3
+     *
+     * @param rowTable
+     * @param columnTable 
+     * @param columnMap
+     * a map like [rowTableField:columnTableField] or [rowTableField:['columnTableField1', 'columnTableField2']
+     * @param kwargs.orderRowsBy
+     * if a column in rowTable maps to multiple columns in columnTable, order which column we insert 
+     * the values in by the values themselves.
+     * @param kwargs.badGroup
+     * a function of type ( [rowTableRow] -> ) where the size of [rowTableRow] exceeds the maximum 
+     * number of columns we're mapping to for a given rowTable field.
+     */
 	static def groupedRowsToColumns(Map kwargs = [:], groovy.sql.Sql sql, rowTable, columnTable, groupBy, columnMap) {
         if (kwargs.sqlParams == null) { kwargs.sqlParams = [:] }
 		//defaults
@@ -248,6 +334,8 @@ class Sql {
 		}
 	}
 
+    /* Workaround crappy handling of null sqlParams in methods for groovy.sql.Sql.
+     */
     private static def _sql(Map kwargs = [:], sqlMethod, String stmt) {
         if (kwargs.sqlParams != null) {
             sqlMethod stmt, kwargs.sqlParams
@@ -256,23 +344,47 @@ class Sql {
         }
     }
 
+    /** Helper function for generating SQL strings for potentially null values.
+     *
+     * e.g.
+     * def someValueMaybeNull = null
+     * _(someValueMaybeNull) == '' 
+     * someValueMaybeNull = 'id = :id'
+     * _(someValueMaybeNull, return: { clause -> "and $clause"}) == 'and id = :id' 
+     *
+     * @param kwargs.default 
+     * what to return if value == kwargs.null (default: '')
+     * @param kwargs.null 
+     * what constitues a missing value (when to return kwargs.default)
+     * @param kwargs.return
+     * if value != kwargs.null, return the result of calling kwargs.return(value)
+     */
     static def _(Map kwargs = [:], value) {
         if (kwargs.default == null) { kwargs.default = '' }
         if (!kwargs.containsKey('null')) { kwargs.null = null }
-        if (kwargs.default == null) { kwargs.default = '' }
         if (kwargs.return == null) { kwargs.return = { x -> x } }
-        if (kwargs.ret == null) { 
-            kwargs.ret = { x ->
-                if (x != kwargs.null) {
-                    kwargs.return(x)
-                } else {
-                    kwargs.default
-                }
-            }
+        if (value != kwargs.null) {
+            return kwargs.return(value)
+        } else {
+            return kwargs.default
         }
-        kwargs.ret(value)
     }
 	
+    /** Generate a SQL string for inserting a query into a table when there may be primary / unique 
+     * key duplication.
+     *
+     * @param intoTable
+     * table to insert into
+     * @param query
+     * select query to insert
+     * @param kwargs.onDuplicateKey
+     * one of:
+     * 1) 'discard': keep the first row from the query and ignore any others with duplicate keys
+     * 2) 'update': keep the last row from the query and ignore any others with duplicate keys
+     * 3) function ( duplicate_alias, table_alias -> SQLUpdateString ) that generates the clause for 
+     *    updating the table row from the attempted duplicate insert (see "DUPLICATE KEY UPDATE 
+     *    [CLAUSE]" at http://dev.mysql.com/doc/refman/5.0/en/insert-on-duplicate.html)
+     */
 	private static String insertIntoSql(Map kwargs = [:], intoTable, query) {
 		if (kwargs.onDuplicateKey == null) {
             return """\
@@ -295,8 +407,29 @@ class Sql {
 		}
 	}
 	
+    /* Engines supported by MySQL.
+     */
     private static def engines = ['MEMORY', 'MyISAM', 'InnoDB']
+    /* Valid values for kwargs.saveAs parameter (other than table engines).
+     */
     private static def validSaveAs = engines + ['query', 'existing', 'rows', 'iterator']
+    /** Perform an SQL query with parameters specified as a map in kwargs.sqlParams.
+     * kwargs.saveAs specifies how the query is handled (whether it is saved a new or existing 
+     * table, or returned as a list of maps, or returned as an iterator).
+     *
+     * @param query
+     * the query to execute, possibly with :params from kwargs.sqlParams.
+     * @param kwargs.saveAs
+     * one of:
+     * 1) a MySQL engine (in Sql.engines), specifying the new table to create from this query.
+     * 2) 'existing', specifying to insert into an existing table.
+     * 3) 'rows', returning the query as a list of maps
+     * 4) 'iterator', return an result with a .each method for iterating over each map
+     * @param kwargs.intoTable
+     * if kwargs.saveAs is a MySQL engine or 'existing', specfies the table we insert into.
+     * @param columns
+     * if kwargs.saveAs is 'existing', specifies the columns of kwargs.intoTable to insert into. 
+     */
     private static def selectAs(Map kwargs = [:], groovy.sql.Sql sql, query, columns) {
         setDefaultKwargs(kwargs)
         if (engines.any { kwargs.saveAs == it }) {
@@ -304,7 +437,6 @@ class Sql {
 				saveAs:kwargs.saveAs, 
 				query:query, 
 				indexColumns:kwargs.indexColumns,
-                onDuplicateKey:kwargs.onDuplicateKey,
 				sqlParams:kwargs.sqlParams)
         } else if (kwargs.saveAs == 'query') {
             return query
@@ -328,6 +460,16 @@ class Sql {
         }
     }
 	
+    /** Insert an iterable of lists or maps into table.
+     *
+     * @param columns
+     * Which columns of table we are inserting.  Optional if rows is an iterable of maps (since we 
+     * default to the first row's keySet as the columns).
+     * @param table
+     * The table to insert into.
+     * @param rows
+     * An iterable of maps or lists.
+     */
 	static def insert(groovy.sql.Sql sql, table, columns, rows) {
         if (rows == null || rows instanceof List && rows.size() == 0) {
             return
@@ -346,7 +488,7 @@ class Sql {
                     }
                     w.println(
                         (row instanceof LinkedHashMap ? columns.collect { row[it] } : row).collect { value ->
-                            // TOOD: handle escaping '\t' in value via quoting 
+                            // TODO: handle escaping '\t' in value via quoting 
                             if (value == null) {
                                 // We need to use \N in the data file to represent a NULL value in mysql
                                 // http://stackoverflow.com/questions/2675323/mysql-load-null-values-from-csv-data
@@ -378,6 +520,9 @@ class Sql {
         // }
 	}
 	
+    /** Same as other insert but with columns unspecified.
+     * That is, just insert into columns in the order in which they are declared in the schema.
+     */
 	static def insert(groovy.sql.Sql sql, table, rows) {
 		insert(sql, table, [], rows)
 	}
@@ -391,50 +536,16 @@ class Sql {
 		setDefault('saveAs', DEFAULT_ENGINE_SAVE_AS)
 	}
 
-    /* groovy.sql.Sql.* methods don't handle an empty parameter map well; this is just a convenience wrapper that hands such 
-     * a method no params if the params map is empty
-     */
-    static def sqlWithParams(sqlMethod, stmt, params) {
-        if (params != [:]) {
-            return sqlMethod(stmt)
-        } else {
-            return sqlMethod(stmt, params)
-        }
-    }
-	
-	/* Execute a block of code using a unique identifier generated from the autoincrement column when inserting an empty row into the provided table Insert an empty row into $table,
-	 * Keyword arguments:
-	 * 
-	 * optional:
-	 * String idColumn: name of the autoincrement column for the provided table
-	 * Map<String, T> values: a map from column names to values (useful if the table your using doesn't specify default values)
-	 */
-	static def withUniqueId(Map kwargs = [:], groovy.sql.Sql sql, table, Closure doWithId) {
-		if (kwargs.idColumn == null) { kwargs.idColumn = 'id' }
-		if (kwargs.values == null) { kwargs.values = [:] }
-		if (kwargs.deleteAfter == null) { kwargs.deleteAfter = true }
-		// make sure this works with multiple columns
-		def extraColumns = kwargs.values.keySet()
-		def keys = sql.executeInsert """\
-			insert into $table(${extraColumns.join(', ')}) 
-			values(${(['?']*extraColumns.size()).join(', ')})""".toString(), 
-			extraColumns.collect { c -> kwargs.values[c] } 
-		def id = keys[0][0]
-		try {
-			doWithId(id)
-		} finally {
-            if (kwargs.deleteAfter) {
-                sql.execute "delete from $table where ${kwargs.idColumn} = ?", id
-            }
-		}
-	}
-	
 	private static def hashRowsToListRows(rows, cols) {
 		rows.collect { r ->
 			cols.collect { r[it] }
 		}
 	}
 
+    /** Select columns from information_schema.columns.
+     * @param kwargs.select
+     * columns to select from information_schema.columns
+     */
     private static def columnMetadata(Map kwargs = [:], groovy.sql.Sql sql) {
         if (kwargs.select == null) { kwargs.select = ['column_name'] }
 		_sql(kwargs, sql.&rows, """\
@@ -444,7 +555,18 @@ class Sql {
             |""".stripMargin())
     }
 
-    static def tblColumns(Map kwargs = [:], groovy.sql.Sql sql) {
+    /** Return metadata about tables in this database as a map.
+     * In particular, returns a map like:
+     * [
+     *     table1: [
+     *         // includes primary key columns
+     *         columns:    [col1, col2, ...],
+     *         // just primary key columns
+     *         primaryKey: [col1, col2],
+     *     ]
+     * ]
+     */
+    static Map tblColumns(Map kwargs = [:], groovy.sql.Sql sql) {
         def columns = columnMetadata(sql,
             select: ['table_name', 'column_name', 'column_key'],
         )
@@ -471,7 +593,12 @@ class Sql {
         return tables
     }
 	
-	static def tableColumns(Map kwargs = [:], groovy.sql.Sql sql, table) {
+    /** Return a list of columns belonging to this table.
+     *
+     * @param kwargs.where
+     * Additional where clause condition on information_schema.columns.
+     */
+	static List tableColumns(Map kwargs = [:], groovy.sql.Sql sql, table) {
         kwargs.sqlParams = (kwargs.sqlParams ?: [:]) + [table: table]
 		hashRowsToListRows(_sql(kwargs, sql.&rows, """\
 			|select column_name 
@@ -482,8 +609,20 @@ class Sql {
 			['column_name']).collect { it[0] }
 	}
 
-    /* Wrapper for Sql.eachRow that replaces columns at positions 0..n with kwargs.names 0..n
-    */
+    /** Wrapper for groovy.sql.Sql.eachRow that replaces the row's keys (the columns returned by 
+     * query at positions 1..n) with kwargs.names 1..n.
+     *
+     * The result is returned as an iterable.
+     *
+     * This is useful for queries that return columns with the same field name (from different 
+     * tables), since these can be distinguished using groovy.sql.Sql.eachRow, whereas identical 
+     * column names get merged in groovy.sql.Sql.rows.
+     *
+     * @param query
+     * the query to execute, possibly with :params from kwargs.sqlParams.
+     * @param names
+     * a list of names the same size as the rows returned by query.
+     */
     static def rows(Map kwargs = [:], groovy.sql.Sql sql, query) {
         new Object() {
             def each(Closure f) {

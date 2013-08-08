@@ -102,7 +102,7 @@ class DependencyTest extends GroovyTestCase {
                 }
             }
         }
-        def lvls = A.levels()
+        def lvls = Dependency.levels([A, B, C, D, E, F])
         assert A.dependsOn == [B, C] && C.dependsOn == [B, F]: "traversal order to reach B is as expected in test behaviour"
         assert lvls == [
             (A): 0,
@@ -135,7 +135,7 @@ class DependencyTest extends GroovyTestCase {
             }
             B = dependency(refId: 'B')
         }
-        def lvls = A.levels()
+        def lvls = Dependency.levels([A, B, C, D, E, F])
         assert A.dependsOn == [C, B] && C.dependsOn == [B, F]: "traversal order to reach B is as expected in test behaviour"
         assert lvls == [
             (A): 0,
@@ -172,7 +172,7 @@ class DependencyTest extends GroovyTestCase {
             F = dependency(refId: 'F')
         }
 
-        def lvls = A.levels(startAt: [A, G])
+        def lvls = Dependency.levels([A, B, C, D, E, F, G])
         assert A.dependsOn == [C, B] && C.dependsOn == [B, F]: "traversal order to reach B is as expected in test behaviour"
         assert lvls == [
             (A): 0,
@@ -183,9 +183,6 @@ class DependencyTest extends GroovyTestCase {
             (F): 1,
             (G): 0,
         ]
-        // order of dependencies in startAt should be irrelevant
-        def lvlsAgain = A.levels(startAt: [G, A])
-        assert lvls == lvlsAgain
 
     }
 

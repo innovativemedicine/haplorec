@@ -294,7 +294,6 @@ public class PipelineTest extends DBTest {
          */
 		runJobTest(
 			variants: [
-				// TODO: i think select disinct is messing up selectWhereEitherSetContains for this testcase; figure out how to work around that
 				['patient1', 'A', 'rs1', 'A', 'hom'],
 				['patient1', 'A', 'rs2', 'G', 'hom'],
 				['patient1', 'B', 'rs1', 'A', 'hom'],

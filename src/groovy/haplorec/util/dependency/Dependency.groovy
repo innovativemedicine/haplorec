@@ -215,17 +215,14 @@ class Dependency {
 	
 	static Map<Dependency, Integer> rowLvls(columnLevel,depSet){
 		def colLvls = Dependency.levels(depSet)
-		println colLvls
 		//is function dependants suppose to be called this way?
 		def dependants = Dependency.dependants(depSet)
-		println dependants
 		def levelList =[]
 		for (i in depSet){
 			if (colLvls[i]==columnLevel){
 				levelList+=i
 			}
 		}
-		println levelList
 		def nulldepOnList=[]
 		for (i in levelList){
 			i.dependsOn=i.dependsOn.findAll{it in levelList}
@@ -234,19 +231,14 @@ class Dependency {
 				nulldepOnList+=i
 			}
 		}
-		println nulldepOnList
 		nulldepOnList.sort{it.target}
 		def verticalNum=[:]
 		def verticalGroup=[:]
-		println levelList
 		for (i in levelList){
 			if (i in nulldepOnList){
-				println i
-				println "ello"
 				verticalNum[i]=0
 				verticalGroup[i]=nulldepOnList.indexOf(i)
 			}else{
-				println i
 				verticalNum[i]=null
 				verticalGroup[i]=null
 			}
@@ -254,27 +246,21 @@ class Dependency {
 		for (i in nulldepOnList){
 			Dependency.numberNodes(i,verticalGroup[i],dependants,verticalNum,verticalGroup)
 		}
-		println verticalNum
-		println verticalGroup
 		def numOfGroups = verticalGroup.values().max()+1
-		println numOfGroups
 		def groupList=[]
 		for (int i=0; i< numOfGroups;i++){
 			groupList+=[levelList.findAll{verticalGroup[it]==i}]
 		}
-		println groupList
-		println "j"
+
 		def rowLevelList=[]
 		for (i in groupList){
 			i.sort{verticalNum[it]}
 			rowLevelList+=i
 		}
-		println rowLevelList
 		def rowLevelMap=[:]
 		for (i in rowLevelList){
 			rowLevelMap[i]=rowLevelList.indexOf(i)
 		}
-		println rowLevelMap
 		return rowLevelMap
 	}
 

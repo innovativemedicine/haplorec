@@ -112,6 +112,15 @@ class Dependency {
 		return lvl
 	}
 
+    /** Build all dependencies in the graph.
+     */
+    static void buildGraph(Collection<Dependency> dependencies) {
+        Set<Dependency> built = []
+        noDependants(dependencies).each { d ->
+            d.build(built)
+        }
+    }
+
     /** Build d, which entails building d's transitive dependencies first (unless they're already 
      * been build, according to their precense in 'built').
      *

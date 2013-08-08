@@ -692,27 +692,9 @@ public class Pipeline {
     /** Given a pipeline job, build all the targets in the graph.
      */
     static def buildAll(Map<CharSequence, Dependency> job) {
-        Set<Dependency> built = []
-        buildAll(job, built)
+        Dependency.buildGraph(job.values())
     }
 
-    /** Given a pipeline job, build all the targets in the graph, unless they've already been built, 
-     * as indicated by their presense in built. 
-     *
-     * built will be modified to contain all built targets. 
-     */
-    static def buildAll(Map<CharSequence, Dependency> job, Set<Dependency> built) {
-        Set<Dependency> targetsWithoutDependants = Dependency.dependants(job.values()).grep { entry ->
-            def (dependency, dependants) = [entry.key, entry.value]
-            /* Filter for the "end points" of the dependency graph.
-            */
-            dependants.size() == 0
-        }.collect { it.key }
-        targetsWithoutDependants.each { dependency ->
-            dependency.build(built)
-        }
-    }
-	
     /** Return an iterator over validated pipeline input if the input is from a stream or
      * filehandle, or just return the input as-is.
      *

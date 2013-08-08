@@ -104,82 +104,54 @@ class Dependency {
         }
         return D
     }
-	private static transitiveDep(depList){
-		if (depList!=[]){
-			for (i in depList){
-				for (j in i.dependants){
-					j.rowLevel=i.rowLevel+1
-					j.group=i.group
-				transitiveDep(i.dependants)
-				}
-			}
-		}
-	}
-	
-	private static rowLvls(columnLevel,depList){
-		def levelList=[]
-		/* filter depList into
-		 * levelList, a list of targets with the inputed column Level
-		 */
-		for (i in depList){
-			if (i.columnLevel == columnLevel){
+
+	static Map<Dependency, Integer> rowLvls(columnLevel,depSet){
+		def colLvls = Dependency.levels(depSet)
+		//is function dependants suppose to be called this way?
+		def dependants = Dependency.dependants(depSet)
+		def levelList =[]
+		for (i in depSet){
+			if (colLvls[i]==columnLevel){
 				levelList+=i
 			}
 		}
-		/* filter out any targets that are not in the column Level
-		 * from each target's dependsOn list and dependants list
-		 * if dependsOn==[] then add to nulldepOnList
-		 */
 		def nulldepOnList=[]
 		for (i in levelList){
-			//change dependsOn really a list of targets not names
-			i.dependsOn=i.dependsOn.findAll{it in levelList.collect{it.name}}
-			i.dependants=i.dependants.findAll{it in levelList}
+			i.dependsOn=i.dependsOn.findAll{it in levelList}
+			dependants[i]=dependants[i].findAll{it in levelList}
 			if (i.dependsOn==[]){
 				nulldepOnList+=i
 			}
 		}
-		/* Put nulldepOnList in alphabetical order
-		 */
-		nulldepOnList.sort{it.name}
-		/* Assign group and rowLevel to nulldepOnList
-		 */
-		for (i in nulldepOnList){
-			i.group=nulldepOnList.indexOf(i)
-			i.rowLevel=0
+		nulldepOnList.sort{it.target}
+		def verticalNum=[:]
+		def verticalGroup=[:]
+		for (i in levelList){
+			if (i in nulldepOnList){
+				verticalNum+=[i:0]
+				verticalGroup+=[i:nulldepOnList.indexOf(i)]
+			}else{
+				verticalNum+=[i:null]
+				verticalGroup+=[i:null]
+			}
 		}
-		/* Assign transitive dependencies to each target
-		 */
-		transitiveDep(nulldepOnList)
-	
-		/* Find the number of groups in the level by finding the
-		 * maximum of it.group in levelList
-		 */
-		def numOfGroups=levelList.collect{it.group}.max()+1
-	
-		/* List of lists, each list has all the targets with the same group level
-		 */
-		def grouplist=[]
-	
-		for (int i=0; i < numOfGroups;i++){
-			grouplist+=[depList.findAll{it.group==i}]
+		for (i in nulldepOnList){
+			numberNodes(i,verticalGroup[i],dependants,verticalNum,verticalGroup)
+		}
+		def numOfGroups = verticalGroup.values().max()+1
+		def groupList=[]
+		for (int i=0; i< numOfGroups;i++){
+			groupList+=[levelList.findAll{verticalGroup[it]==i}]
 		}
 		def rowLevelList=[]
-		/* Sort each list in group list by rowLevel and then by alpha
-		 * then join list to rowLevelList
-		 */
-		for (i in grouplist){
-			i.sort{x,y->
-				if (x.rowLevel==y.rowLevel){
-					x.name <=> y.name
-				}else{
-					x.rowLevel <=> y.rowLevel
-				}
-			}
+		for (i in groupList){
+			i.sort{verticalNumber[it]}
 			rowLevelList+=i
 		}
-	
-		return rowLevelList
+		def rowLevelMap=[:]
+		for (i in rowLevelList){
+			
+		}
 	}
 
 }

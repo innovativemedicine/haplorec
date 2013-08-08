@@ -225,9 +225,8 @@ class Dependency {
 		}
 		def nulldepOnList=[]
 		for (i in levelList){
-			i.dependsOn=i.dependsOn.findAll{it in levelList}
 			dependants[i]=dependants[i].findAll{it in levelList}
-			if (i.dependsOn==[]){
+			if (i.dependsOn.findAll{it in levelList}==[]){
 				nulldepOnList+=i
 			}
 		}

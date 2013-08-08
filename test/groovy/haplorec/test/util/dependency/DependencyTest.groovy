@@ -185,6 +185,97 @@ class DependencyTest extends GroovyTestCase {
         ]
 
     }
+	void testrowLvlsMultipleGroups(){
+		def builder = new DependencyGraphBuilder()
+		def _ = { -> }
+		def dep = { name -> [id:name, target:name, rule:_] }
+		Dependency A, B, C, D, E, Q, Z, M, N, O, P, L
+		L=builder.dependency(dep('L')){
+			C=dependency(dep('C')){
+				A=dependency(dep('A')){}
+			}
+		}
+		M=builder.dependency(dep('M')){
+			D=dependency(dep('D')){
+				C=dependency(refId: 'C')
+			}
+		}
+		N=builder.dependency(dep('N')){
+			E=dependency(dep('E')){
+				C=dependency(refId: 'C')
+			}
+		}
+		O=builder.dependency(dep('O')){
+			Q=dependency(dep('Q')){
+				B=dependency(dep('B')){}
+			}
+		}
+		P=builder.dependency(dep('P')){
+			Z=dependency(dep('Z')){
+				Q=dependency(refId: 'Q')
+				D=dependency(refId: 'D')
+			}
+		}
+		
+		def rowMap=Dependency.rowLvls(1,[A, B, C, D, E, Q, Z, L, M, N, O, P] as Set) 
+		
+		assert rowMap == [
+			(C):0,
+			(D):1,
+			(E):2,
+			(Q):3,
+			(Z):4,
+			]
+	}
+	
+	
+	void testrowLvlsMultipleGroupsAlpha(){
+		//change name of start nodes, which rearranges targets in the column
+		def builder = new DependencyGraphBuilder()
+		def _ = { -> }
+		def dep = { name -> [id:name, target:name, rule:_] }
+		Dependency A, B, W, D, E, Q, Z, M, N, O, P, L
+		L=builder.dependency(dep('L')){
+		W=dependency(dep('W')){
+				A=dependency(dep('A')){}
+			}
+		}
+		M=builder.dependency(dep('M')){
+			D=dependency(dep('D')){
+				W=dependency(refId: 'W')
+			}
+		}
+		N=builder.dependency(dep('N')){
+			E=dependency(dep('E')){
+				W=dependency(refId: 'W')
+			}
+		}
+		O=builder.dependency(dep('O')){
+			Q=dependency(dep('Q')){
+				B=dependency(dep('B')){}
+			}
+		}
+		P=builder.dependency(dep('P')){
+			Z=dependency(dep('Z')){
+				Q=dependency(refId: 'Q')
+				D=dependency(refId: 'D')
+			}
+		}
+		
+		def rowMap=Dependency.rowLvls(1,[A, B, W, D, E, Q, Z, L, M, N, O, P] as Set)
+		
+		
+		assert rowMap == [
+			(Q):0,
+			(W):1,
+			(D):2,
+			(Z):3,
+			(E):4,
+			]
+	}
+	
+	
+	
 
     def buildHandlerTest(Closure addHandler) {
         /* Test that build handlers:

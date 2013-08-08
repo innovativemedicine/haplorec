@@ -199,7 +199,20 @@ class Dependency {
             dependants.size() == 0
         }.collect { it.key }
     }
-
+	static numberNodes(dependency,group,depedantsMap,verNumMap,verGrpMap){
+		def i=0
+		def number
+		number={dep,grp,dM,vnM,vgM->
+			vnM[dep]=i
+			vgM[dep]=grp
+			i+=1
+			for (d in dM[dep].sort{it.target}){
+				number(d,grp,dM,vnM,vgM)
+			}
+		}
+		number(dependency,group,depedantsMap,verNumMap,verGrpMap)
+	}
+	
 	static Map<Dependency, Integer> rowLvls(columnLevel,depSet){
 		def colLvls = Dependency.levels(depSet)
 		//is function dependants suppose to be called this way?
@@ -231,7 +244,7 @@ class Dependency {
 			}
 		}
 		for (i in nulldepOnList){
-			numberNodes(i,verticalGroup[i],dependants,verticalNum,verticalGroup)
+			Dependency.numberNodes(i,verticalGroup[i],dependants,verticalNum,verticalGroup)
 		}
 		def numOfGroups = verticalGroup.values().max()+1
 		def groupList=[]
@@ -245,8 +258,9 @@ class Dependency {
 		}
 		def rowLevelMap=[:]
 		for (i in rowLevelList){
-			
+			rowLevelMap+=[i:rowLevelList.indexOf(i)]
 		}
+		return rowLevelMap
 	}
 
 }

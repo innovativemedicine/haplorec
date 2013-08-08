@@ -58,11 +58,60 @@ class Dependency {
     /* Whether or not to re-throw an exception after it is passed to onFail handlers.
      */
     Boolean propagateFailure = true
+
+	@Override
+	public String toString() {
+        return target
+	}
 	
 	void build(Set<Dependency> built = new HashSet<Dependency>()) {
 		bld(this, built, new HashSet<Dependency>(built))
 	}
+
+    /** Algorithms.
+     * =============================================================================================
+     */
 	
+    /** Start the lvl algorithm with a starting level of 0 from this node.
+     */
+	static Map<Dependency, Integer> levels(Map kwargs = [:], Collection<Dependency> dependencies) {
+		if (kwargs.start == null) { kwargs.start = 0 }
+        /* A mapping from Dependency -> Integer, representing the shortest path length from that 
+         * dependency to a target with no dependants.
+         */
+        Map<Dependency, Integer> lvl = [:]
+        /** For each transitive dependency t of d, record in lvl[t] the length of the shortest path from 
+         * t to d.
+         *
+         * Typically, you'd initiate this algorithm with:
+         * d = a target with no dependants
+         * l = 0
+         *
+         * @param l
+         * the length of a path from d to a target with no dependants (travelling along dependants).
+         * @param d
+         * the current node along the path
+         */
+        def lvls
+        lvls = { Integer l, Dependency d ->
+            if (!lvl.containsKey(d)) {
+                lvl[d] = l
+            } else if (l < lvl[d]) {
+                lvl[d] = l 
+            }
+            d.dependsOn.each { dependency ->
+                if (!lvl.containsKey(dependency) || l + 1 < lvl[dependency]) {
+                    // if we haven't visited or its smaller
+                    lvls(l + 1, dependency)
+                }
+            }
+        }
+        noDependants(dependencies).each { d ->
+            lvls(kwargs.start, d)
+        }
+		return lvl
+	}
+
     /** Build d, which entails building d's transitive dependencies first (unless they're already 
      * been build, according to their precense in 'built').
      *
@@ -106,55 +155,16 @@ class Dependency {
         }
 	}
 	
-	@Override
-	public String toString() {
-        return target
-	}
-	
-    /** For each transitive dependency t of d, record in lvl[t] the length of the shortest path from 
-     * t to d.
-     *
-     * Typically, you'd initiate this algorithm with:
-     * d = a target with no dependants
-     * l = 0
-     *
-     * @param l
-     * the length of a path from d to a target with no dependants (travelling along dependants).
-     * @param d
-     * the current node along the path
-     * @param lvl
-     * a mapping from Dependency -> Integer, representing the shortest path length from that 
-     * dependency to a target with no dependants
-     */
-	private static lvls(Integer l, Dependency d, Map<Dependency, Integer> lvl) {
-		if (!lvl.containsKey(d)) {
-			lvl[d] = l
-		} else if (l < lvl[d]) {
-			lvl[d] = l 
-		}
-		d.dependsOn.each { dependency ->
-			if (!lvl.containsKey(dependency) || l + 1 < lvl[dependency]) {
-				// if we haven't visited or its smaller
-				lvls(l + 1, dependency, lvl)
-			}
-		}
-	}
-	
-    /** Start the lvl algorithm with a starting level of 0 from this node.
-     */
-	Map<Dependency, Integer> levels(Map kwargs = [:]) {
-		if (kwargs.start == null) { kwargs.start = 0 }
-        if (kwargs.levels == null) { kwargs.levels = new HashMap() }
-        if (kwargs.startAt == null) { 
-            kwargs.startAt = [this]
-        }
-        kwargs.startAt.each { d ->
-            lvls(kwargs.start, d, kwargs.levels)
-        }
-		return kwargs.levels
-	}
+    private static Set<Dependency> noDependants(Collection<Dependency> dependencies) {
+        Dependency.dependants(dependencies).grep { entry ->
+            def (dependency, dependants) = [entry.key, entry.value]
+            /* Filter for the "end points" of the dependency graph.
+            */
+            dependants.size() == 0
+        }.collect { it.key }
+    }
 
-    /* Given a collection (it should really be a Set) of dependencies in a dependency graph, return 
+    /** Given a collection (it should really be a Set) of dependencies in a dependency graph, return 
      * a map from Dependency d to it's dependants (i.e. { x | x.dependsOn contains d } ).
      */
     static Map<Dependency, Set<Dependency>> dependants(Collection<Dependency> dependencies) {

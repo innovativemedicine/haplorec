@@ -146,25 +146,7 @@ class DependencyTest extends GroovyTestCase {
             (F): 2,
         ]
 	}
-	void testLevelsDoesNotWork() {
-		//code is working fine, not using the right algorithm to assign column levels
-		// will result in a line connecter to go backwards
-		def builder = new DependencyGraphBuilder()
-		def _ = { -> }
-		def dep = { name -> [id:name, target:name, rule:_] }
-		Dependency A,B,C,D
-		D=builder.dependency(dep('D')){
-			A=dependency(dep('A')){}
-			C=dependency(dep('C')){
-				B=dependency(dep('B')){
-					A=dependency(refId: 'A')
-				}
-			}
-		}
-		Dependency.levels([A,B,C,D] as Set) ==[A:1,B:2,C:1,D:0]
-	}
-
-
+	
 	void testMultipleStartingNodes() {
 		/* Makes sure nodes that get visited at a higher level first, then a lower level retain the higher level.  In particular, B gets visited first from C (level 1), and then from A (level 0), so we expect B as level 1. 
 		 */
@@ -202,7 +184,138 @@ class DependencyTest extends GroovyTestCase {
         ]
 
     }
+	
+	void testDependantonLeft() {
+		//code is working fine, not using the right algorithm to assign column levels
+		// will result in a dependant showing up on the left side of what it depends on
+		// and the line connecter goes backwards
+		// in this example B is to the left of A even though B depends on A
+		def builder = new DependencyGraphBuilder()
+		def _ = { -> }
+		def dep = { name -> [id:name, target:name, rule:_] }
+		Dependency A,B,C,D
+		D=builder.dependency(dep('D')){
+			A=dependency(dep('A')){}
+			C=dependency(dep('C')){
+				B=dependency(dep('B')){
+					A=dependency(refId: 'A')
+				}
+			}
+		}
+		 def lvls = Dependency.levels([A,B,C,D] as Set) 
+		 assert lvls == [
+			 (A):1,
+			 (B):2,
+			 (C):1,
+			 (D):0]
+	}
+	
+	void testEmptySet(){
+		def x = Dependency.rowLvls([] as Set)
+		assert x==[:]
+	}
+	
+	void testrowLvlsGroupAlpha(){
+		//tests if it places groups by alpha order
+		def builder = new DependencyGraphBuilder()
+		def _ = { -> }
+		def dep = { name -> [id:name, target:name, rule:_] }
+		Dependency A, B, C, D, E, F
+		F=builder.dependency(dep('F')){
+			B=dependency(dep('B')){
+				D=dependency(dep('D')){}
+			}
+		}
+		C=builder.dependency(dep('C')){
+			E=dependency(dep('E')){
+				A=dependency(dep('A')){}
+			}
+		}
+		def rlvls= Dependency.rowLvls([F,E,D,C,B,A] as Set)
+		assert rlvls == [
+			(F):1,
+			(E):1,
+			(D):1,
+			(A):0,
+			(B):0,
+			(C):0,
+			]
+		
+	}
+	
+	void testrowLvlsWithinGroupLvlsAlpha(){
+		// this tests if the dependants are properly sorted 
+		// alphabetically before they are numbered
+		def builder = new DependencyGraphBuilder()
+		def _ = { -> }
+		def dep = { name -> [id:name, target:name, rule:_] }
+		Dependency I, J, N, T, S, R, U, V
+		S=builder.dependency(dep('S')){
+			N=dependency(dep('N')){}
+		}
+		R=builder.dependency(dep('R')){
+			T=dependency(dep('T')){
+				N=dependency(refId: 'N')
+			}
+		}
+		U=builder.dependency(dep('U')){
+			J=dependency(dep('J')){
+				N=dependency(refId: 'N')
+			}
+		}
+		V=builder.dependency(dep('V')){
+			
+			I=builder.dependency(dep('I')){
+				N=dependency(refId: 'N')
+			}
+		}
+		def rlvls = Dependency.rowLvls([N,T,J,I,S,R,U,V] as Set)
+		assert rlvls == [
+			(N):0,
+			(T):3,
+			(J):2,
+			(I):1,
+			(R):0,
+			(S):1,
+			(U):2,
+			(V):3,
+			]
+		
+	}
+	void testrowLvlsNumReassignment(){
+		// this tests if a target depends on two different thing within a group
+		// will it still be numbered properly 
+		def builder = new DependencyGraphBuilder()
+		def _ = { -> }
+		def dep = { name -> [id:name, target:name, rule:_] }
+		Dependency R, S, T, A, D, C
+		R=builder.dependency(dep('R')){
+			C=dependency(dep('C')){}
+		}
+		S=builder.dependency(dep('S')){
+			D=dependency(dep('D')){
+				C=dependency(refId: 'C')
+			}
+		}
+		T=builder.dependency(dep('T')){
+			A=dependency(dep('A')){
+				D=dependency(refId: 'D')
+				C=dependency(refId: 'C')
+			}
+		}
+		def rlvls = Dependency.rowLvls([R, S, T, A, D, C] as Set)
+		assert rlvls == [
+			(C):0,
+			(D):1,
+			(A):2,
+			(R):0,
+			(S):1,
+			(T):2,
+			]
+	}
 	void testrowLvlsMultipleGroups(){
+		//this tests if a target depends on two different targets in different groups
+		//it should appear bellow the lower group 
 		def builder = new DependencyGraphBuilder()
 		def _ = { -> }
 		def dep = { name -> [id:name, target:name, rule:_] }
@@ -234,8 +347,8 @@ class DependencyTest extends GroovyTestCase {
 			}
 		}
 		
-		def rowMap=Dependency.rowLvls([A, B, C, D, E, Q, Z, L, M, N, O, P] as Set) 
-		assert rowMap == [
+		def rlvls = Dependency.rowLvls([A, B, C, D, E, Q, Z, L, M, N, O, P] as Set) 
+		assert rlvls == [
 			(A):0,
 			(B):1,
 			(L):0,
@@ -253,7 +366,9 @@ class DependencyTest extends GroovyTestCase {
 	
 	
 	void testrowLvlsMultipleGroupsAlpha(){
-		//change name of start nodes, which rearranges targets in the column
+		//Switches the order of the two groups from the above 
+		//by changing the name of the one of the group's starting target
+		// the target should still fall under the lower group
 		def builder = new DependencyGraphBuilder()
 		def _ = { -> }
 		def dep = { name -> [id:name, target:name, rule:_] }
@@ -285,10 +400,10 @@ class DependencyTest extends GroovyTestCase {
 			}
 		}
 		
-		def rowMap=Dependency.rowLvls([A, B, W, D, E, Q, Z, L, M, N, O, P] as Set)
+		def rlvls = Dependency.rowLvls([A, B, W, D, E, Q, Z, L, M, N, O, P] as Set)
 		
 		
-		assert rowMap == [
+		assert rlvls == [
 			(A):0,
 			(B):1,
 			(L):0,

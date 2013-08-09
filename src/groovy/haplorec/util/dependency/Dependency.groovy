@@ -214,57 +214,61 @@ class Dependency {
 	}
 	
 	static Map<Dependency, Integer> rowLvls(depSet){
-		def colLvls = Dependency.levels(depSet)
-		//is function dependants suppose to be called this way?
-		def dependants = Dependency.dependants(depSet)
-		def theMap=[:]
-		for (int n; n < colLvls.values().max()+1;n++){
-			def levelList =[]
-			for (i in depSet){
-				if (colLvls[i]==n){
-					levelList+=i
+		if (depSet ==  ([] as Set)){
+			return [:]
+		} else{
+			def colLvls = Dependency.levels(depSet)
+			//is function dependants suppose to be called this way?
+			def dependants = Dependency.dependants(depSet)
+			def theMap=[:]
+			for (int n=0; n < colLvls.values().max()+1;n++){
+				def levelList =[]
+				for (i in depSet){
+					if (colLvls[i]==n){
+						levelList+=i
+					}
 				}
-			}
-			def nulldepOnList=[]
-			for (i in levelList){
-				dependants[i]=dependants[i].findAll{it in levelList}
-				if (i.dependsOn.findAll{it in levelList}==[]){
-					nulldepOnList+=i
+				def nulldepOnList=[]
+				for (i in levelList){
+					dependants[i]=dependants[i].findAll{it in levelList}
+					if (i.dependsOn.findAll{it in levelList}==[]){
+						nulldepOnList+=i
+					}
 				}
-			}
-			nulldepOnList.sort{it.target}
-			def verticalNum=[:]
-			def verticalGroup=[:]
-			for (i in levelList){
-				if (i in nulldepOnList){
-					verticalNum[i]=0
-					verticalGroup[i]=nulldepOnList.indexOf(i)
-				}else{
-					verticalNum[i]=null
-					verticalGroup[i]=null
+				nulldepOnList.sort{it.target}
+				
+				def verticalNum=[:]
+				def verticalGroup=[:]
+				for (i in levelList){
+					if (i in nulldepOnList){
+						verticalNum[i]=0
+						verticalGroup[i]=nulldepOnList.indexOf(i)
+					}else{
+						verticalNum[i]=null
+						verticalGroup[i]=null
+					}
 				}
+				for (i in nulldepOnList){
+					Dependency.numberNodes(i,verticalGroup[i],dependants,verticalNum,verticalGroup)
+				}
+				def numOfGroups = verticalGroup.values().max()+1
+				def groupList=[]
+				for (int i=0; i< numOfGroups;i++){
+					groupList+=[levelList.findAll{verticalGroup[it]==i}]
+				}
+		
+				def rowLevelList=[]
+				for (i in groupList){
+					i.sort{verticalNum[it]}
+					rowLevelList+=i
+				}
+				def rowLevelMap=[:]
+				for (i in rowLevelList){
+					rowLevelMap[i]=rowLevelList.indexOf(i)
+				}
+				theMap+=rowLevelMap
 			}
-			for (i in nulldepOnList){
-				Dependency.numberNodes(i,verticalGroup[i],dependants,verticalNum,verticalGroup)
-			}
-			def numOfGroups = verticalGroup.values().max()+1
-			def groupList=[]
-			for (int i=0; i< numOfGroups;i++){
-				groupList+=[levelList.findAll{verticalGroup[it]==i}]
-			}
-	
-			def rowLevelList=[]
-			for (i in groupList){
-				i.sort{verticalNum[it]}
-				rowLevelList+=i
-			}
-			def rowLevelMap=[:]
-			for (i in rowLevelList){
-				rowLevelMap[i]=rowLevelList.indexOf(i)
-			}
-			theMap+=rowLevelMap
+			return theMap
 		}
-		return theMap
 	}
-
 }

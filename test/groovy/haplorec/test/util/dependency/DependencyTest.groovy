@@ -146,6 +146,23 @@ class DependencyTest extends GroovyTestCase {
             (F): 2,
         ]
 	}
+	void testLevelsDoesNotWork() {
+		//code is working fine, not using the right algorithm to assign column levels
+		// will result in a line connecter to go backwards
+		def builder = new DependencyGraphBuilder()
+		def _ = { -> }
+		def dep = { name -> [id:name, target:name, rule:_] }
+		Dependency A,B,C,D
+		D=builder.dependency(dep('D')){
+			A=dependency(dep('A')){}
+			C=dependency(dep('C')){
+				B=dependency(dep('B')){
+					A=dependency(refId: 'A')
+				}
+			}
+		}
+		Dependency.levels([A,B,C,D] as Set) ==[A:1,B:2,C:1,D:0]
+	}
 
 
 	void testMultipleStartingNodes() {
@@ -217,9 +234,15 @@ class DependencyTest extends GroovyTestCase {
 			}
 		}
 		
-		def rowMap=Dependency.rowLvls(1,[A, B, C, D, E, Q, Z, L, M, N, O, P] as Set) 
-		
+		def rowMap=Dependency.rowLvls([A, B, C, D, E, Q, Z, L, M, N, O, P] as Set) 
 		assert rowMap == [
+			(A):0,
+			(B):1,
+			(L):0,
+			(M):1,
+			(N):2,
+			(O):3,
+			(P):4,
 			(C):0,
 			(D):1,
 			(E):2,
@@ -262,10 +285,17 @@ class DependencyTest extends GroovyTestCase {
 			}
 		}
 		
-		def rowMap=Dependency.rowLvls(1,[A, B, W, D, E, Q, Z, L, M, N, O, P] as Set)
+		def rowMap=Dependency.rowLvls([A, B, W, D, E, Q, Z, L, M, N, O, P] as Set)
 		
 		
 		assert rowMap == [
+			(A):0,
+			(B):1,
+			(L):0,
+			(M):1,
+			(N):2,
+			(O):3,
+			(P):4,
 			(Q):0,
 			(W):1,
 			(D):2,

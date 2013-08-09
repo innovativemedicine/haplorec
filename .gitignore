@@ -2,3 +2,5 @@ bin/
 .settings/
 *.pyc
 /src/sql/mysql/haplorec.sql
+/tmp
+/src/python/.scrapy

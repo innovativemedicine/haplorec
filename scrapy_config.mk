@@ -1,7 +1,7 @@
-CSV_OUTPUT_DIR_RELATIVE = tmp/scrapy
-DB_FILES_DIR_RELATIVE = $(CSV_OUTPUT_DIR_RELATIVE)/mysql
-export CSV_OUTPUT_DIR = $(abspath $(CSV_OUTPUT_DIR_RELATIVE))
-export DB_FILES_DIR = $(abspath $(DB_FILES_DIR_RELATIVE))
+CSV_OUTPUT_DIR_RELATIVE := tmp/scrapy
+DB_FILES_DIR_RELATIVE := $(CSV_OUTPUT_DIR_RELATIVE)/mysql
+export CSV_OUTPUT_DIR := $(abspath $(CSV_OUTPUT_DIR_RELATIVE))
+export DB_FILES_DIR := $(abspath $(DB_FILES_DIR_RELATIVE))
 
 CSV_FILENAMES := drug_recommendation.csv gene_haplotype_variant.csv genotype_drug_recommendation.csv genotype_phenotype.csv
 CSV_FILES := $(addprefix $(CSV_OUTPUT_DIR_RELATIVE)/,$(CSV_FILENAMES))
@@ -36,5 +36,6 @@ load_haplorec: $(DB_FILES)
 			\
 			"genotype_phenotype.phenotype_genotype"
 
+scrape: $(CSV_OUTPUT_DIR_RELATIVE)
 
-.PHONY: dbfiles load_haplorec
+.PHONY: dbfiles load_haplorec scrape

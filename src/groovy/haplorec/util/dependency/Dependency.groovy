@@ -199,5 +199,120 @@ class Dependency {
             dependants.size() == 0
         }.collect { it.key }
     }
-
+	
+	/** Starting at a node, recurse through its dependants
+	 *  Using Depth First Search to Assign vertical Numbers.
+	 *  Assigns all the nodes the same Group as the starting node.
+	 *  If there is a tie, the nodes are sorted Alphabetically.
+	 */
+	static numberNodes(dependency,group,depedantsMap,verNumMap,verGrpMap){
+		def i=0
+		def number
+		number={dep,grp,dM,vnM,vgM->
+			vnM[dep]=i
+			vgM[dep]=grp
+			i+=1
+			for (d in dM[dep].sort{it.target}){
+				number(d,grp,dM,vnM,vgM)
+			}
+		}
+		number(dependency,group,depedantsMap,verNumMap,verGrpMap)
+	}
+	
+	/** Takes in the Set of dependencies of the dependency Graph
+	 * For each column in the Dependency Graph it finds the nodes that do not depend
+	 * on any other nodes in the column and runs numberNodes on it.
+	 * Then it sorts the nodes by Group and then vertical number.
+	 * Creates a map from the dependency to its row level
+	 * Each of these maps are added to theMap which is returned once the last column's map is added
+	 */
+	static Map<Dependency, Integer> rowLvls(Set<Dependency> depSet){
+		if (depSet ==  ([] as Set)){
+			return [:]
+		} else {
+			/** Getting column Level and dependants Maps
+			 */
+			def colLvls = Dependency.levels(depSet)
+			def dependants = Dependency.dependants(depSet)
+			
+			def theMap=[:]
+			
+			/** Iterating through Each column Level
+			 */
+			for (int n=0; n < colLvls.values().max()+1;n++){
+				def levelList =[]
+				
+				/** creating a list with dependencies that have column Level == n 
+				 */
+				for (i in depSet){
+					if (colLvls[i]==n){
+						levelList+=i
+					}
+				}
+				def nulldepOnList=[]
+				
+				/** Isolating dependants to only within the column Level 
+				 * and finding the dependencies that do not 
+				 * depend on anything within the column level
+				 */
+				for (i in levelList){
+					dependants[i]=dependants[i].findAll{it in levelList}
+					if (i.dependsOn.findAll{it in levelList}==[]){
+						nulldepOnList+=i
+					}
+				}
+				
+				nulldepOnList.sort{it.target}
+				
+				def verticalNum=[:]
+				def verticalGroup=[:]
+				
+				/** Creating Maps that 
+				 * map dependency to their vertical Number and with
+				 * vertical group they fall under 
+				 */
+				for (i in levelList){
+					if (i in nulldepOnList){
+						verticalNum[i]=0
+						verticalGroup[i]=nulldepOnList.indexOf(i)
+					}else{
+						verticalNum[i]=null
+						verticalGroup[i]=null
+					}
+				}
+				
+				/** Calling numberNodes on each dependency in nulldepOnList
+				 */
+				for (i in nulldepOnList){
+					Dependency.numberNodes(i,verticalGroup[i],dependants,verticalNum,verticalGroup)
+				}
+				
+				def numOfGroups = verticalGroup.values().max()+1
+				
+				def groupList=[]
+				/** Sort the dependencies into their groups
+				 */
+				for (int i=0; i< numOfGroups;i++){
+					groupList+=[levelList.findAll{verticalGroup[it]==i}]
+				}
+				/**Sort each group by vertical Num 
+				 * and create a list of all the columns nodes
+				 */
+				def rowLevelList=[]
+				for (i in groupList){
+					i.sort{verticalNum[it]}
+					rowLevelList+=i
+				}
+				
+				/** Change the list to a map 
+				 */
+				def rowLevelMap=[:]
+				for (i in rowLevelList){
+					rowLevelMap[i]=rowLevelList.indexOf(i)
+				}
+				theMap+=rowLevelMap
+			}
+			return theMap
+		}
+	}
 }

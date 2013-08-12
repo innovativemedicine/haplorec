@@ -4,6 +4,7 @@ from scrapy.contrib.linkextractors.sgml import SgmlLinkExtractor
 # from scrapy.spider import CrawlSpider
 from scrapy.selector import HtmlXPathSelector
 from pharmgkb import items, parsers, spiders
+from pharmgkb.spiders import Gene, as_func
 
 class GeneDrugPairSpider(CrawlSpider):
     name = "GeneDrugPair"
@@ -11,7 +12,7 @@ class GeneDrugPairSpider(CrawlSpider):
     rules = (
         Rule(SgmlLinkExtractor(restrict_xpaths='//div[@id="cpicGeneDrugPairsContent"]/table',
                                allow=( r'/gene/', )), 
-             callback=spiders.as_func(spiders.GeneSpider)),
+             callback=as_func(Gene.GeneSpider)),
     )
 
     def __init__(self, start_url='http://www.pharmgkb.org/page/cpicGeneDrugPairs', *a, **kw):

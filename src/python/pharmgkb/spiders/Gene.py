@@ -5,7 +5,7 @@ from scrapy.http.request.form import FormRequest
 from pharmgkb import items
 from pharmgkb import parsers
 from pharmgkb.spiders import as_func
-from parsers.text import parse
+from pharmgkb.parsers.text import parse
 
 import itertools
 import re

@@ -11,7 +11,7 @@ class GeneDrugPairSpider(CrawlSpider):
     rules = (
         Rule(SgmlLinkExtractor(restrict_xpaths='//div[@id="cpicGeneDrugPairsContent"]/table',
                                allow=( r'/gene/', )), 
-             callback=spiders.as_func(spiders.Gene.GeneSpider)),
+             callback=spiders.as_func(spiders.GeneSpider)),
     )
 
     def __init__(self, start_url='http://www.pharmgkb.org/page/cpicGeneDrugPairs', *a, **kw):

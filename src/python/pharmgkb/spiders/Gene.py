@@ -4,7 +4,7 @@ from scrapy.selector import HtmlXPathSelector
 from scrapy.http.request.form import FormRequest
 from pharmgkb import items
 from pharmgkb import parsers
-from spiders import as_func
+from pharmgkb.spiders import as_func
 from parsers.text import parse
 
 import itertools

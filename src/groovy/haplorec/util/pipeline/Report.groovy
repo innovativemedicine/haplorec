@@ -15,7 +15,7 @@ public class Report {
      * @param kwargs.sqlParams.job_id a job_id
      */
     static def novelHaplotypeReport(Map kwargs = [:], groovy.sql.Sql sql) {
-        kwargs += Pipeline.tables(kwargs)
+        kwargs += Pipeline.tables()
         if (kwargs.iterableManyTimes == null) { kwargs.iterableManyTimes = false }
         return new Object() {
             def each(Closure f) {
@@ -52,7 +52,7 @@ public class Report {
      * @param kwargs.sqlParams.job_id a job_id
      */
     static def phenotypeDrugRecommendationReport(Map kwargs = [:], groovy.sql.Sql sql) {
-        kwargs += Pipeline.tables(kwargs)
+        kwargs += Pipeline.tables()
         report(sql,
             fillWith: kwargs.fillWith,
             select: [
@@ -117,7 +117,7 @@ public class Report {
      * instead of kwargs.phenotypeDrugRecommendation.
      */
     static def genotypeDrugRecommendationReport(Map kwargs = [:], groovy.sql.Sql sql) {
-        kwargs += Pipeline.tables(kwargs)
+        kwargs += Pipeline.tables()
         report(sql,
             fillWith: kwargs.fillWith,
             select: [

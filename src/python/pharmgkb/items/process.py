@@ -1,3 +1,8 @@
+"""
+Use funcparserlib to process string data from PharmGKB into uniform formats (e.g. remove trailing 
+periods, lower-casing everything).
+"""
+
 from funcparserlib.parser import some, a, many, skip, finished, maybe, with_forward_decls, NoParseError, _Ignored
 
 import re
@@ -21,14 +26,18 @@ _without_percent_of_patients = many(
     _any 
 ) >> _remove_skipped
 
-# process fields scraped from pharmgkb into the same format (e.g. remove trailing periods, 
-# lower-casing everything) to make duplicate filtering of items easier.
-
-# e.g. phenotype_name's for CYP2D6
-# 
-# Intermediate metabolizer (~2-11% of patients)
-# Intermediate Metabolizer (~2-11% of patients)
 def phenotype_name(phenotype_name):
+    """
+    Process the "Phenotype" part of a "Look up your guideline" drug recommendation.
+
+    e.g. phenotype_name's for CYP2D6
+
+    >>> phenotype_name('Intermediate metabolizer (~2-11% of patients)')
+    'intermediate metabolizer'
+
+    >>> phenotype_name('Intermediate Metabolizer (~2-11% of patients)')
+    'intermediate metabolizer'
+    """
     if phenotype_name is None:
         return None
     return ' '.join(_without_percent_of_patients.parse(_tokenize(phenotype_name.rstrip('.').lower())))

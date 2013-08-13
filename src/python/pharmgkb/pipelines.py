@@ -21,6 +21,9 @@ import csv
 _output_dir = settings.CSV_OUTPUT_DIR
 
 class CsvPipeline(object):
+    """
+    Output items into settings.CSV_OUTPUT_DIR/<class_name>.csv.
+    """
     def __init__(self):
         self.exporters = {}
         # (Item.__class__, item.values) => True

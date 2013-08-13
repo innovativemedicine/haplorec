@@ -57,7 +57,7 @@ class Dependency {
 	public String toString() {
         return target
 	}
-
+	//SPHINX alg start
     /** Algorithms.
      * =============================================================================================
      * - Building a target and its associated dependencies is implemented via the bld method 

@@ -7,6 +7,16 @@ from pharmgkb import items, parsers, spiders
 from pharmgkb.spiders import Gene, as_func
 
 class GeneDrugPairSpider(CrawlSpider):
+    """
+    Crawl starting at a PharmGKB gene-drug pair page (http://www.pharmgkb.org/page/cpicGeneDrugPairs).
+    
+    This spider extracts nothing.
+
+    This spider crawls out to:
+
+    * :class:`.GeneSpider`'s for each gene on this page (which has a corresponding drug associated 
+      with it)
+    """
     name = "GeneDrugPair"
     # allowed_domains = ["pharmgkb.org"]
     rules = (

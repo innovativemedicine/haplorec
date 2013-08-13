@@ -14,20 +14,43 @@ import urlparse
 import collections
 
 def get_domain(url):
+    """
+    Return the domain name of a url.
+    """
     p = urlparse.urlparse(url)
     return "{}://{}".format(p.scheme, p.netloc)
 
 def _spider_request_callback(spider, response):
+    """
+    Default callback for spider_request, which is to just call spider.parse on the response.
+    """
     return spider.parse(response)
 def spider_request(spider_class, response, callback=_spider_request_callback, **kwargs):
+    """
+    Return a scrapy Request object to handle whatever url's are handled by spider_class, but use the 
+    same domain as response.url.
+
+    spider_class must have a .request(base_url, callback) method, which generates a scrapy Request 
+    whose response is handled by the provided callback.
+    """
     base_url = get_domain(response.url)
     spider = spider_class(base_url, **kwargs)
     return spider.request(base_url, lambda r: callback(spider, r))
 
-def pairs(xs, key=lambda pair: pair):
-    return [tuple(sorted(pair, key=key)) for pair in itertools.combinations_with_replacement(xs, 2)]
-
 class GeneSpider(BaseSpider):
+    """
+    Crawl starting at a PharmGKB gene-page.
+    
+    e.g. http://www.pharmgkb.org/gene/PA124
+
+    This spider extracts:
+
+    * :class:`.gene_haplotype_variant` items from the "Haplotypes" tab of the gene-page
+
+    This spider crawls out to:
+
+    * :class:`.GeneHaplotypeSpider`'s for each drug for this gene with a "Lookup your guideline" dialog
+    """
     name = "Gene"
     # allowed_domains = ["pharmgkb.org"]
 
@@ -41,11 +64,14 @@ class GeneSpider(BaseSpider):
         gene_name = re.search(r'^(.*)\s*\[PharmGKB\]$', hxs.select('//title/text()')[0].extract()).group(1).rstrip()
         haplotypes_table = hxs.select('//div[@id="tabHaplotypes"]/article[@class="HaplotypeSet"]/*/table')
         if haplotypes_table != []:
-            # this gene a "Haplotypes" tab on its page
+            # This gene has a "Haplotypes" tab on its page.
             for gene_haplotype_variant in self.parse_haplotypes_table(haplotypes_table[0], gene_name):
                 yield gene_haplotype_variant
 
         base_url = get_domain(response.url)
+        # Query for javascript lines that asynchronously populate the "Look up your guideline" 
+        # dialog, and extract annotation_ids, which are used internally to identify haplotypes for 
+        # this gene.
         annotation_ids = hxs.select('//script[contains(@type, "javascript") and contains(text(), "popPickers")]/text()').re(r"popPickers\('#edg(\d+)','\d+'\);")
         if annotation_ids == []:
             self.log("Missing gene haplotype data for {gene_name}".format(**locals()), level=scrapy.log.WARNING)
@@ -75,10 +101,17 @@ class GeneSpider(BaseSpider):
                         )
 
 class FormRequestSpider(object):
+    """
+    Abstract class for spiders that crawl urls that take query parameters.
+    """
     def __init__(self):
         self.formdata = {}
 
     def request(self, base_url, callback):
+        """
+        Return a FormRequest object whose formdata fields are fields in self.formdata_fields that 
+        are also in self.kwargs.
+        """
         for name, attr in self.formdata_fields:
             self.formdata[name] = self.kwargs[attr]
         return FormRequest(base_url + self.url, formdata=self.formdata, callback=callback)
@@ -94,8 +127,25 @@ class FormRequestSpider(object):
 
 class GeneHaplotypeSpider(FormRequestSpider, BaseSpider):
     """
-    Parse the json response containing genes and their haplotypes, then dispatch some 
-    GenotypeSpider's for each possible genotype.
+    Crawl starting at a JSON response containing a gene and its haplotypes for a particular drug 
+    recommendation (taken from a "Lookup your guideline" dialog for a gene and drug).
+    
+    e.g. http://www.pharmgkb.org/views/ajaxGuidelinePickerData.action?annotationId=827848453
+
+    >>> response.body
+    '{"results":[
+        {"gene":"HLA-B","haps":[
+            {"name":"*57:01","value":"PA165987830"},
+            {"name":"Any Other","value":"other"}
+        ]}
+    ]}'
+
+    This spider extracts nothing.
+
+    This spider crawls out to:
+
+    * :class:`.HaplotypeGenotypeSpider`'s for each pair of haplotypes for this gene
+    * :class:`.SnpGenotypeSpider`'s for each SNP for this gene
     """
     name = "GeneHaplotypes"
     url = '/views/ajaxGuidelinePickerData.action'
@@ -148,6 +198,9 @@ class GeneHaplotypeSpider(FormRequestSpider, BaseSpider):
                             annotation_id=annotation_id)
 
 class BaseGenotypeSpider(FormRequestSpider, BaseSpider):
+    """
+    Abstract class for spiders that crawl drug recommmendation urls.
+    """
     url = '/views/alleleGuidelines.action'
     # allowed_domains = ["pharmgkb.org"]
 
@@ -186,6 +239,9 @@ class BaseGenotypeSpider(FormRequestSpider, BaseSpider):
         title_value = dict(itertools.izip([strip_title(t) for t in hxs.select('//dt/*/text()').extract()],
                            [' '.join(h.select('(* | */*)/text()').extract()) for h in hxs.select('//dd')]))
 
+        # A mapping from location (gene_name in the case of HaplotypeGenotypeSpider, snp_id in the 
+        # case of SnpGenotypeSpider) that specifies what field from the drug recommendation to use 
+        # instead of "Phenotype (Genotype)". Some recommendations have unique fields.
         phenotype_exceptions = { 
             'CYP2C19': 'Metabolizer Status',
             'CYP2D6': 'Metabolizer Status',
@@ -213,6 +269,41 @@ class BaseGenotypeSpider(FormRequestSpider, BaseSpider):
             yield unused_genotype_data
 
 class HaplotypeGenotypeSpider(BaseGenotypeSpider):
+    """
+    Crawl starting at a drug recommendation from a "Lookup your guideline" dialog.
+
+    e.g. 
+
+    http://www.pharmgkb.org/views/alleleGuidelines.action?allele2=PA165987830&allele1=PA165987830&annotationId=827848453&location=HLA-B
+   
+    >>> response.body
+    '''
+    <dl>
+        <dt><em>
+            Phenotype (Genotype)
+        </em></dt>
+        <dd><p>Very low risk of hypersensitivity (~94% of patients) in the absence of *57:01 alleles (reported as "negative" on a genotyping test)</p></dd>
+        <dt><em>
+            Implications
+        </em></dt>
+        <dd><p>Low or reduced risk of abacavir hypersensitivity</p></dd>
+        <dt><em>
+            Recommendations
+            (Strength: Strong)
+        </em></dt>
+        <dd><p>Use abacavir per standard dosing guidelines</p></dd>
+    </dl>
+    '''
+ 
+    This spider extracts:
+
+    * a :class:`.drug_recommendation` for this genotype and drug
+    * a :class:`.genotype_phenotype` mapping genotype to "Phenotype (Genotype)"
+    * a :class:`.genotype_drug_recommendation` indicating there is a drug_recommendation for this 
+      genotype and drug
+
+    This spider crawls out to nothing.
+    """
     name = "HaplotypeGenotype"
     formdata_fields = [
         ('annotationId', 'annotation_id'),
@@ -246,6 +337,40 @@ class HaplotypeGenotypeSpider(BaseGenotypeSpider):
         return drug_recommendation, genotype_phenotype, genotype_drug_recommendation
 
 class SnpGenotypeSpider(BaseGenotypeSpider):
+    """
+    Crawl starting at a drug recommendation from a "Lookup your guideline" which takes a single 
+    "genotype" as input (which is really a pair of alleles for a single snp).  This genotype is used
+    in combination with that gene's Haplotype matrix to determine which haplotypes these variants 
+    correspond to.
+
+    e.g. for SLCO1B1 gene: http://www.pharmgkb.org/gene/PA134865839
+
+    http://www.pharmgkb.org/views/alleleGuidelines.action?allele1=CC&annotationId=827921472&location=rs4149056
+
+    >>> response.body
+    '''
+    <dl>
+        <dt><em>
+            Phenotype (Genotype)
+        </em></dt>
+        <dd><p>Low activity</p></dd>
+        <dt><em>
+            Implications
+        </em></dt>
+        <dd><p>High myopathy risk</p></dd>
+        <dt><em>
+            Recommendations
+            (Strength: Strong)
+        </em></dt>
+        <dd><p>FDA recommends against 80 mg. Prescribe a lower dose or consider an alternative 
+        statin; consider routine creatine kinase (CK) surveillance. </p>...</dd>
+    </dl>
+    '''
+
+    This spider extracts the same stuff as :class:`.HaplotypeGenotypeSpider`.
+    
+    This spider crawls out to nothing.
+    """
     name = "SnpGenotype"
     # allowed_domains = ["pharmgkb.org"]
     formdata_fields = [

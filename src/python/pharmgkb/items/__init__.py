@@ -1,26 +1,21 @@
-# Define here the models for your scraped items
-#
-# See documentation in:
-# http://doc.scrapy.org/topics/items.html
+"""
+Define scrapy items (http://doc.scrapy.org/en/0.18/topics/items.html).  In our case, items 
+correspond to PharmGKB data tables defined in haplorec.  
+
+In the case where tables use auto_increment fields to reference each other, additional fields are 
+added to the referring tables to allow disambiguation during insertion.  See the load_haplorec 
+target in scrapy_config.mk, which calls script/load_dsv.py to accomplish this.
+
+An example of the case described above is where drug_recommendation.drug_recommendation_id is 
+referenced by gene_phenotype_drug_recommendation and genotype_drug_recommendation.
+
+See documentation in:
+http://doc.scrapy.org/topics/items.html
+"""
 
 from scrapy.item import Item, Field
 
 import process
-
-class PharmgkbItem(Item):
-    pass
-
-class GeneDrugPairItem(Item):
-    gene_drug_pairs = Field()
-    # status = Field()
-    # author_contact = Field()
-    # others_involved = Field()
-    # publication_link = Field()
-    # update = Field()
-
-class GeneItem(Item):
-    snp_ids = Field()
-    alleles = Field()
 
 # mysql tables
 
@@ -72,15 +67,36 @@ class genotype_drug_recommendation(Item):
 # end of mysql tables
 
 class unused_genotype_data(Item):
+    """
+    Record any information that we do not currently consider, that is present in PharmGKB's "Look up 
+    your guideline" drug recommendations.
+
+    e.g. given a drug recommendation:
+
+        Phenotype (Genotype):
+        An individual carrying ...
+
+        Metabolizer Status:
+        Ultrarapid metabolizer ...
+
+        Implications:
+        Increased metabolism ...
+
+        Recommendations (Strength: Optional):
+        Consider alternative ...
+
+        Uconsidered Datum:
+        Some stuff
+
+    We would record values['Unconsidered Datum'] = 'Some stuff'.
+    """
     source = Field()
     values = Field()
 
-class gene_haplotype_phenotype(Item):
-    gene_name = Field()
-    haplotype_name = Field()
-    phenotype_name = Field()
-
 def copy_item_fields(item, to):
+    """
+    Copy fields from one Item to the other. 
+    """
     for k in item.fields.keys():
         try:
             to[k] = item[k]

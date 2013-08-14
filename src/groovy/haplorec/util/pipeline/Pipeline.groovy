@@ -61,6 +61,7 @@ public class Pipeline {
         'phenotypeDrugRecommendation',
     ] as Set
 
+    // SPHINX: stage definitions
     /** Pipeline Stage Definitions.
      * =============================================================================================
      * Each stage is named like {source}To{Target}, where source is the input table alias and target 
@@ -79,6 +80,7 @@ public class Pipeline {
      *     ...
      * ]
      */
+    // END SPHINX
 
     /** Add default keyword arguments to kwargs used by the stages.
      * This adds things like defaultTables.
@@ -478,6 +480,7 @@ public class Pipeline {
         Map dependencies = [:]
         def canUpload = { d -> PipelineInput.inputTables.contains(d) }
 
+        // SPHINX: wire up the dependency graph
         dependencies.genotypeDrugRecommendation = builder.dependency(id: 'genotypeDrugRecommendation', target: 'genotypeDrugRecommendation', 
         name: "Genotype Drug Recommendations",
         table: tbl.genotypeDrugRecommendation,
@@ -519,6 +522,7 @@ public class Pipeline {
         fileUpload: canUpload('novelHaplotype')) {
             dependency(refId: 'geneHaplotype')
         }
+        // END SPHINX
 
         return [tbl, dependencies]
     }
@@ -631,6 +635,7 @@ public class Pipeline {
             },
         ]
 
+        // SPHINX: add rules to dependency graph
         /* Add rules for building each target in the dependency graph (using whatever inputs were 
          * specified in the arguments of Pipeline.pipelineJob).
          */
@@ -661,6 +666,7 @@ public class Pipeline {
         dependencies.genePhenotype.rule = { ->
             genotypeToGenePhenotype(stageKwargs, sql)
         }
+        // END SPHINX
 
         /* For datasets that are already provided, replace their rules with ones that insert their 
          * rows into the approriate job_* table.

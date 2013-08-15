@@ -79,7 +79,16 @@ def _file_to_class(filename):
 # post-processing of generated *.csv files (i.e. processing the depends on having all the scraped data to 
 # perform, such as collapsing lines would otherwise cause duplicate primary-key errors upon insertion into mysql)
 
-def dup_map(dicts, key):
+def _dup_map(dicts, key):
+    """
+    Group dicts into based on their values (d[key[0]], ..., d[key[n]]).
+
+    >>> _dup_map([{'f1': 1, 'f2': 2}, {'f1': 1, 'f2': 3}, {'f1': 4, 'f2': 2}], ['f1'])
+    defaultdict(<type 'list'>, {
+        (1,): [{'f1': 1, 'f2': 2}, {'f1': 1, 'f2': 3}], 
+        (4,): [{'f1': 4, 'f2': 2}]
+    })
+    """
     d = collections.defaultdict(list)
     for dict in dicts:
         d[tuple(dict[k] for k in key)].append(dict)
@@ -88,6 +97,10 @@ def dup_map(dicts, key):
 _separator = '. '
 
 def _collapser(key_fields, non_key_fields, k, rows, field_collapsers={}, separator=_separator):
+    """
+    Given a list of rows, collapse the rows into a single row by collapsing across each row's 
+    non-primary-key fields.  Use _collapse_field if a field-specific collapser isn't given.
+    """
     row = {}
     for field, value in zip(key_fields, k):
         row[field] = value
@@ -97,10 +110,19 @@ def _collapser(key_fields, non_key_fields, k, rows, field_collapsers={}, separat
     return row
 
 def _collapse_field(rows, field, process_field=lambda x: x, separator=_separator):
+    """
+    Given a list of rows, collapse each row across row[field] by only keeping unique row[field]'s, 
+    then joining them on separator.
+    """
     processed_fields = set(process_field(r[field]) for r in rows)
     return separator.join(processed_fields)
 
 def genotype_phenotype_collapser(key_fields, non_key_fields, k, rows, separator=_separator):
+    """
+    Collapse genotype_phenotype rows (dicts) by stripping trailing 's' on phenotype_name's (CYP2D6 
+    inconsistently uses "poor metabolizers" with/without the trailing 's'), and only keeping unique 
+    fields.
+    """
     def phenotype_name_collapser(rows, field, separator=separator):
         return _collapse_field(rows, field, 
                 process_field=lambda v: v.rstrip('s'),
@@ -110,6 +132,11 @@ def genotype_phenotype_collapser(key_fields, non_key_fields, k, rows, separator=
     }, separator=separator)
 
 def collapse_by_key(input_file, output, delim=',', separator=_separator):
+    """
+    Given a file output by the scrapy pipeline (e.g. "tmp/scrapy/genotype_phenotype.csv"), collapse 
+    rows with identical primary keys by joining fields on separator (or use some table specific 
+    collapsing strategy <table_name>_collapser).
+    """
     item_class = _file_to_class(input_file)
     collapse = getattr(pipelines, item_class.__name__ + '_collapser', _collapser)
     input = fileinput.FileInput([input_file])
@@ -118,7 +145,7 @@ def collapse_by_key(input_file, output, delim=',', separator=_separator):
     non_key_fields = set([x for x in item_class.fields.keys() if x not in key_fields])
     writer = csv.DictWriter(output, reader.fieldnames, delimiter=delim)
     writer.writeheader()
-    for k, rows in dup_map(reader, key_fields).iteritems():
+    for k, rows in _dup_map(reader, key_fields).iteritems():
         row = collapse(key_fields, non_key_fields, k, rows, separator=separator)
         writer.writerow(row)
     input.close()

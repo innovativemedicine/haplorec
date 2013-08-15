@@ -1,6 +1,6 @@
 -- -------------------------------------------------------------------------------------------------
 -- Define PharmGKB data tables.  
--- That is, a table used for storing data scraped from PharmGKB's website.
+-- These tables are used for storing data scraped from PharmGKB's website.
 -- -------------------------------------------------------------------------------------------------
 
 -- May be useful later to provide haplotype-specific data
@@ -17,12 +17,11 @@
 --     primary key (gene_name, phenotype_name)
 -- ) {{SQL_ENGINE}};
 
+-- Stores data for a "Lookup your guideline" drug recommmendation, as found in the drug sections of 
+-- gene-page's on PharmGKB.  Currently, a new drug_recommendation is inserted for each (gene_name, 
+-- haplotype_name1, haplotype_name2), even though their may be identical recommendations for 
+-- different genotypes of the same gene.
 CREATE TABLE drug_recommendation (
-    -- The true primary key for a therapeutic drug_recommendation is a drug, and a set of genes and 
-    -- phenotypes; that is:
-    -- (DrugName, { (GeneName, PhenotypeName) })
-    -- sadly we can't use such a key (767 and 1000 byte limits on varchar keys for InnoDB and MyISAM 
-    -- respectively) so this will just have to be enforced by whoever is inserting data.
     id bigint not null auto_increment,
     drug_name varchar({{SQL_DRUG_NAME_LENGTH}}),
     implications LONGTEXT,
@@ -34,20 +33,6 @@ CREATE TABLE drug_recommendation (
 
 -- Defines the mapping { (GeneName, PhenotypeName) } -> DrugRecommendation.
 -- That is, the set of gene phenotypes that map to particular drug recommendations.
---
--- Usage:
--- def gene_phenotype->drug_recommendation(
---     input_gene_phenotype = create table(gene_name, phenotype_name, index(gene_name, phenotype_name)), 
---     engine = (MEMORY|MyISAM)):
---     return cursor:
---         select * from drug_recommendation rec
---             # refer to src/sql/mysql/subset_query.sql 
---             where $either_set_contains(
---                     select * from input_gene_phenotype, 
---                     select gene_name, phenotype_name from gene_phenotype_drug_recommendation ghr 
---                         where drug_recommendation_id = ghr.drug_recommendation_id,
---                     columns=[gene_name, phenotype_name]
---                   )
 CREATE TABLE gene_phenotype_drug_recommendation (
     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
     phenotype_name varchar({{SQL_PHENOTYPE_NAME_LENGTH}}),
@@ -59,20 +44,6 @@ CREATE TABLE gene_phenotype_drug_recommendation (
 
 -- Defines the mapping (GeneName, HaplotypeName) -> { (SnpId, Allele) }.
 -- That is, the snps belonging to a particular gene's haplotype.
---
--- Usage:
--- def snp->gene_haplotype(input_variants, engine = (MEMORY|MyISAM)):
---     create temporary table input_gene_haplotype (gene_name, haplotype_name) ENGINE = $engine
---         select distinct gene_name, haplotype_name from gene_haplotype_variant ghv
---             # refer to src/sql/mysql/subset_query.sql 
---             where $either_set_contains(
---                     select * from input_variants, 
---                     select * from gene_haplotype_variant ghv 
---                         where gene_name = ghv.gene_name and 
---                         haplotype_name = ghv.haplotype_name, 
---                     columns=[snp_id, allele]
---                   )
---     return table: input_gene_haplotype
 CREATE TABLE gene_haplotype_variant (
     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
     haplotype_name varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
@@ -80,12 +51,12 @@ CREATE TABLE gene_haplotype_variant (
     allele varchar({{SQL_ALLELE_LENGTH}}),
     index gene_name_haplotype_name_idx (gene_name, haplotype_name),
     index snp_id_allele_idx (snp_id, allele),
-    -- for variantToVariantGene
     index gene_name_snp_id_idx (gene_name, snp_id),
     index haplotype_name_idx (haplotype_name),
     primary key (gene_name, haplotype_name, snp_id, allele)
 ) {{SQL_ENGINE}};
 
+-- Genes and their associated Snps.
 -- gene_haplotype_variant is denormalized in terms of the snp's associated with a gene 
 -- (they are the same for each haplotype of that gene).
 CREATE ALGORITHM=MERGE VIEW gene_snp ( 
@@ -95,6 +66,8 @@ CREATE ALGORITHM=MERGE VIEW gene_snp (
 select distinct gene_name, snp_id
 from gene_haplotype_variant;
 
+-- Genes and their associated haplotyoes.
+-- gene_haplotype_variant is denormalized in terms of the haplotype_name's associated with a gene.
 CREATE ALGORITHM=MERGE VIEW gene_haplotype ( 
     gene_name,
     haplotype_name 
@@ -103,8 +76,7 @@ select distinct gene_name, haplotype_name
 from gene_haplotype_variant;
 
 -- Defines the mapping (GeneName, HaplotypeName, HaplotypeName) -> (GeneName, PhenotypeName).
--- That is, a mapping from genotypes (defined as 2 haplotypes that span the same genetic region of a 
--- gene) to phenotypes. 
+-- That is, a mapping from genotypes (defined as 2 haplotypes for a gene) to phenotypes. 
 --
 -- This mapping is defined externally, but will typically be obtained by results published by the 
 -- Clinical Pharmacogenetics Implementation Consortium (CPIC), which are published in an english 
@@ -114,7 +86,7 @@ from gene_haplotype_variant;
 -- e.g. 
 -- - CYP2D6 gene: http://www.pharmgkb.org/gene/PA128#tabview=tab0&subtab=31
 -- - genotype: "An individual carrying more than two copies of functional alleles"
--- - phenotype: "Ultrarapid metabolizer") since it varies based on a paticular 
+-- - phenotype: "Ultrarapid metabolizer"
 CREATE TABLE genotype_phenotype (
     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
     -- haplotype_name 1 and 2 must be stored in sorted order
@@ -123,46 +95,17 @@ CREATE TABLE genotype_phenotype (
     phenotype_name varchar({{SQL_PHENOTYPE_NAME_LENGTH}}),
     index gene_name_phenotype_name_idx (gene_name, phenotype_name),
     primary key (gene_name, haplotype_name1, haplotype_name2)
-    -- foreign key (gene_name, haplotype_name1) references haplotype (gene_name, haplotype_name),
-    -- foreign key (gene_name, haplotype_name2) references haplotype (gene_name, haplotype_name),
-    -- foreign key (gene_name, phenotype_name) references phenotype (gene_name, phenotype_name)
 ) {{SQL_ENGINE}};
 
--- def select_where_set_contains(as = (MEMORY|MyISAM|cursor|existing), into_table, columns, single_subset_table, multi_subset_table):
---     if as in [MEMORY, MyISAM]: 
---         create temporary table $into_table ($columns, index($columns)) ENGINE = $as ...
---     elif as = cursor: 
---         cursor: ...
---     elif as = existing:
---         into = INTO $into_table
---     with ... as:
---         select distinct $columns from $multi_subset_table outer
---             $into
---             # refer to src/sql/mysql/subset_query.sql 
---             where $either_set_contains(
---                     select $columns from $single_subset_table, 
---                     select $columns from $multi_subset_table
---                         where $(
---                             'and '.join("$c = outer.$c" for c in columns)
---                         )
---                   )
-
+-- Defines the mapping { (GeneName, HaplotypeName, HaplotypeName) } -> DrugRecommendation.
+-- That is, a mapping from a set of genotypes to a particular drug recommendations
+--
 -- Justification:
 -- There are cases where CPIC results publish dosing recommendatons based (solely?) on 
 -- genotypes as opposed to phenotypes.
 -- e.g. 
 -- warfarin dosing recommendations are based on VKORC1 and CYP2C9 genotypes 
 -- (http://www.pharmgkb.org/drug/PA451906; refer to "Table 1: Recommended daily warfarin doses")
---
--- Defines the mapping { (GeneName, HaplotypeName, HaplotypeName) } -> DrugRecommendation.
--- That is, a mapping from a set of genotypes to a particular drug recommendations
--- Usage:
--- def genotype->drug_recommendation(input_genotype, engine):
---     return select_where_set_contains(
---             as=cursor, 
---             columns=[gene_name, haplotype_name1, haplotype_name2],
---             single_subset_table=input_genotype,
---             multi_subset_table=genotype_drug_recommendation)
 CREATE TABLE genotype_drug_recommendation (
     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
     haplotype_name1 varchar({{SQL_HAPLOTYPE_NAME_LENGTH}}),
@@ -210,14 +153,14 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
 
 -- -------------------------------------------------------------------------------------------------
 -- Define job_patient_* tables.  
--- That is, a table which is used for storing the results of a stage in the pipeline, and 
--- corresponds to a node the pipeline graph.
+-- These tables are used for storing the results of a stage in the pipeline, and correspond to a node 
+-- the pipeline graph.  The contents of these tables are described in the pipeline stage definitions 
+-- in Pipeline.groovy.
 -- -------------------------------------------------------------------------------------------------
 
 {% call job_patient_table('genotype_drug_recommendation') -%}
     {{ het_combo_fields() }}
     drug_recommendation_id bigint,
-    -- TODO: + het_combo, het_combos
     unique (job_id, patient_id, drug_recommendation_id, het_combo),
     foreign key (drug_recommendation_id) references drug_recommendation(id),
 {%- endcall %}
@@ -225,7 +168,6 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
 {% call job_patient_table('phenotype_drug_recommendation') -%}
     {{ het_combo_fields() }}
     drug_recommendation_id bigint,
-    -- TODO: + het_combo, het_combos
     unique (job_id, patient_id, drug_recommendation_id, het_combo),
     foreign key (drug_recommendation_id) references drug_recommendation(id),
 {%- endcall %}
@@ -252,7 +194,6 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
     index gene_name_haplotype_name1_haplotype_name2_idx (gene_name, haplotype_name1, haplotype_name2),
 {%- endcall %}
 
--- ambiguous as to what physical_chromosome variants occur on
 {% call job_patient_table('variant') -%}
     {{ physical_chromosome_field() }}
     snp_id varchar({{SQL_SNP_ID_LENGTH}}),
@@ -260,7 +201,6 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
     -- zygosity is one of 'het' (for a heterozygous call) or 'hom' (for a homozygous call)
     zygosity char(3), 
     index snp_id_allele_idx (snp_id, allele),
-    -- to optimize the filtering out of haplotype calls that use too many heterozygous snp's
     index job_pat_phys_zyg (job_id, patient_id, physical_chromosome, zygosity),
 {%- endcall %}
 
@@ -272,7 +212,6 @@ CREATE TABLE {{table_prefix}}job_patient_{{table_suffix}} (
     index het_combo_phys_idx (het_combo, physical_chromosome),
 {%- endcall %}
 
--- GeneName, { (SnpId, Allele) }
 {% call job_patient_table('novel_haplotype') -%}
     {{ physical_chromosome_fields() }}
     gene_name varchar({{SQL_GENE_NAME_LENGTH}}),
